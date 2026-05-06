@@ -1,0 +1,10 @@
+[
+   {
+      "step_title": "Upgrade",
+      "items": [
+         {
+            "desc": "Existing /var/packages/seaweedfs/var/volume.yaml is preserved. The new weed binary will be picked up on the next start. To re-render argv against the cluster (e.g. master replica count changed), the postupgrade hook rewrites $PKGVAR/run/argv automatically."
+         }
+      ]
+   }
+]

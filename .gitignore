@@ -1,0 +1,16 @@
+# Built bootstrap binary (regenerated from cmd/)
+diyspk/seaweedfs/src/bin/
+
+# spksrc submodule staging (regenerated from cross/, diyspk/)
+spksrc/cross/seaweedfs/
+spksrc/diyspk/seaweedfs/
+spksrc/distrib/
+spksrc/work-*
+spksrc/packages/
+
+# Local Go build artifacts
+cmd/synology-volume-bootstrap/synology-volume-bootstrap
+
+.idea/
+.vscode/
+*.swp

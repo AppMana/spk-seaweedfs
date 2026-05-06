@@ -1,0 +1,3 @@
+[submodule "spksrc"]
+	path = spksrc
+	url = https://github.com/SynoCommunity/spksrc.git

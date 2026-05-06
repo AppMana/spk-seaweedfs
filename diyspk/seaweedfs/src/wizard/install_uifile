@@ -1,0 +1,158 @@
+[
+   {
+      "step_title": "Kubernetes connection",
+      "items": [
+         {
+            "desc": "This package joins an existing SeaweedFS cluster managed by seaweedfs-operator. Provide the Kubernetes API endpoint and a service-account token. See the project README for the RBAC manifest that mints the token."
+         },
+         {
+            "type": "textfield",
+            "subitems": [
+               {
+                  "key": "wizard_apiserver",
+                  "desc": "Kubernetes API server URL (https://...:6443)",
+                  "validator": {
+                     "allowBlank": false,
+                     "regex": {
+                        "expr": "/^https?:\\/\\/[^[:space:]]+$/",
+                        "errorText": "Must be an http(s) URL."
+                     }
+                  }
+               }
+            ]
+         },
+         {
+            "type": "password",
+            "subitems": [
+               {
+                  "key": "wizard_token",
+                  "desc": "Service-account bearer token",
+                  "validator": {
+                     "allowBlank": false,
+                     "minLength": 20
+                  }
+               }
+            ]
+         },
+         {
+            "type": "textfield",
+            "subitems": [
+               {
+                  "key": "wizard_namespace",
+                  "desc": "Namespace containing the Seaweed CR",
+                  "defaultValue": "seaweedfs",
+                  "validator": {
+                     "allowBlank": false,
+                     "regex": {
+                        "expr": "/^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/",
+                        "errorText": "Lowercase RFC1123 label."
+                     }
+                  }
+               },
+               {
+                  "key": "wizard_seaweed_name",
+                  "desc": "Seaweed CR metadata.name",
+                  "defaultValue": "appmana",
+                  "validator": {
+                     "allowBlank": false,
+                     "regex": {
+                        "expr": "/^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/",
+                        "errorText": "Lowercase RFC1123 label."
+                     }
+                  }
+               }
+            ]
+         },
+         {
+            "type": "multiselect",
+            "subitems": [
+               {
+                  "key": "wizard_insecure",
+                  "desc": "Skip TLS verification of the API server (NOT recommended; only for self-signed clusters during testing)",
+                  "defaultValue": false
+               }
+            ]
+         },
+         {
+            "desc": "After install, copy the API server's CA certificate to /var/packages/seaweedfs/var/kube/ca.crt over SSH if your cluster uses a private CA. Otherwise the package falls back to insecureSkipTLSVerify per the toggle above."
+         }
+      ]
+   },
+   {
+      "step_title": "Volume server settings",
+      "items": [
+         {
+            "type": "textfield",
+            "subitems": [
+               {
+                  "key": "wizard_data_share",
+                  "desc": "Shared folder for volume data (created if missing)",
+                  "defaultValue": "seaweedfs",
+                  "validator": {
+                     "allowBlank": false,
+                     "regex": {
+                        "expr": "/^[^<>: */?\"]*/",
+                        "errorText": "Share name must be a single folder name."
+                     }
+                  }
+               },
+               {
+                  "key": "wizard_advertise_ip",
+                  "desc": "IP advertised to masters (LAN address of this Synology)",
+                  "defaultValue": "",
+                  "validator": {
+                     "allowBlank": false,
+                     "regex": {
+                        "expr": "/^[0-9]{1,3}(\\.[0-9]{1,3}){3}$/",
+                        "errorText": "IPv4 address."
+                     }
+                  }
+               },
+               {
+                  "key": "wizard_datacenter",
+                  "desc": "DataCenter label (used by SeaweedFS placement)",
+                  "defaultValue": "synology"
+               },
+               {
+                  "key": "wizard_rack",
+                  "desc": "Rack label",
+                  "defaultValue": ""
+               },
+               {
+                  "key": "wizard_max_volumes",
+                  "desc": "Maximum volume count",
+                  "defaultValue": "1000",
+                  "validator": {
+                     "regex": {
+                        "expr": "/^[0-9]+$/",
+                        "errorText": "Positive integer."
+                     }
+                  }
+               }
+            ]
+         },
+         {
+            "type": "combobox",
+            "subitems": [
+               {
+                  "key": "wizard_disk_type",
+                  "desc": "Disk type label",
+                  "editable": false,
+                  "defaultValue": "hdd",
+                  "store": [ "hdd", "ssd" ]
+               }
+            ]
+         },
+         {
+            "type": "textfield",
+            "subitems": [
+               {
+                  "key": "wizard_mtls_secret",
+                  "desc": "(Optional) Name of a Kubernetes Secret holding tls.crt/tls.key/ca.crt for SeaweedFS mTLS",
+                  "defaultValue": ""
+               }
+            ]
+         }
+      ]
+   }
+]

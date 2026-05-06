@@ -1,0 +1,34 @@
+# SeaweedFS Synology volume server configuration.
+#
+# Single source of truth for `weed volume` argv. The DSM wizard's
+# service_postinst hook writes this file by substituting @PLACEHOLDERS@.
+# Editing this file via SSH is fully supported; the wizard reuses the
+# same shape on upgrade. After any edit, run:
+#
+#     sudo synopkg restart seaweedfs
+#
+# to re-render argv (kube discovery + mTLS) and restart the daemon.
+
+kube:
+  apiserver: @APISERVER@
+  tokenFile: @PKGVAR@/kube/token
+  caFile: @PKGVAR@/kube/ca.crt
+  insecureSkipTLSVerify: @INSECURE@
+  namespace: @NAMESPACE@
+  seaweedName: @SEAWEED_NAME@
+
+volume:
+  dir: @SHARE_PATH@
+  ip: @ADVERTISE_IP@
+  publicUrl: @ADVERTISE_IP@:@HTTP_PORT@
+  port: @HTTP_PORT@
+  grpcPort: @GRPC_PORT@
+  dataCenter: @DATACENTER@
+  rack: @RACK@
+  max: @MAX_VOLUMES@
+  diskType: @DISK_TYPE@
+  index: ""
+  extraFlags: []
+
+mtls:
+  secretName: @MTLS_SECRET@
