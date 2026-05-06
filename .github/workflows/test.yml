@@ -1,0 +1,30 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  bootstrap-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cmd/synology-volume-bootstrap/go.mod
+          cache-dependency-path: cmd/synology-volume-bootstrap/go.sum
+      - name: Run unit tests
+        working-directory: cmd/synology-volume-bootstrap
+        run: go test -race -count=1 ./...
+      - name: Verify cross-compile (linux/amd64, no cgo)
+        working-directory: cmd/synology-volume-bootstrap
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: amd64
+        run: go build -ldflags "-s -w" -trimpath -o /tmp/synology-volume-bootstrap ./
+      - name: Verify the binary is statically linked
+        run: |
+          file /tmp/synology-volume-bootstrap
+          file /tmp/synology-volume-bootstrap | grep -q "statically linked"

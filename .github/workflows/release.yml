@@ -1,0 +1,59 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-spk:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install spksrc build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            build-essential make wget rsync tar gzip \
+            jq moreutils imagemagick
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cmd/synology-volume-bootstrap/go.mod
+          cache-dependency-path: cmd/synology-volume-bootstrap/go.sum
+
+      - name: Cache spksrc downloads + Go module cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            spksrc/distrib
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-spksrc-${{ hashFiles('cross/seaweedfs/Makefile', 'cross/seaweedfs/digests') }}
+          restore-keys: |
+            ${{ runner.os }}-spksrc-
+
+      - name: Build SPK
+        run: make all
+
+      - name: Capture SPK path
+        id: spk
+        run: |
+          spk=$(find spksrc/packages -name 'seaweedfs_*.spk' | head -1)
+          echo "path=$spk" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename $spk)" >> "$GITHUB_OUTPUT"
+          sha256sum "$spk" > "$spk.sha256"
+          ls -la "$spk" "$spk.sha256"
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ steps.spk.outputs.path }}
+            ${{ steps.spk.outputs.path }}.sha256
+          fail_on_unmatched_files: true

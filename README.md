@@ -17,6 +17,19 @@ The package authenticates to the Kubernetes apiserver with a service-account tok
 └── Makefile                         orchestrator (host build → stage → spksrc)
 ```
 
+## Build host prerequisites
+
+Linux build host (verified on Ubuntu 24.04 / 25.x):
+
+```bash
+sudo apt install --no-install-recommends -y \
+  build-essential make wget rsync tar gzip \
+  jq moreutils imagemagick \
+  golang-go
+```
+
+`moreutils` (`sponge`) is required by spksrc's `service.mk` to atomically rewrite `conf/resource`; without it the build fails with exit 127 mid-way through the package step. `imagemagick` (`convert`) is used by spksrc to resize the package icon. `golang-go` is the host Go that builds our `synology-volume-bootstrap` binary; spksrc itself fetches its own Go toolchain into the build tree for cross-compiling `weed`.
+
 ## Building the SPK
 
 ```bash
@@ -25,6 +38,8 @@ cd spk-seaweedfs
 make            # builds bootstrap (host Go), stages into spksrc, runs spksrc
 make show-spk   # prints the path of the produced .spk
 ```
+
+First build downloads the Synology x64 cross-toolchain (~hundreds of MB, cached after) and the SeaweedFS Go module graph. Subsequent builds reuse caches and complete in ~2-3 minutes on this hardware. The produced SPK lands at `spksrc/packages/seaweedfs_x64-7.2_4.23-1.spk` and covers every DSM 7.2 x86_64 Synology family (apollolake, denverton, geminilake, broadwell, etc.) in one file.
 
 By default this builds for `arch-x86_64-7.2`. Override with `make TARGET_ARCH=x86_64 TARGET_DSM=7.0 spk` if needed.
 
