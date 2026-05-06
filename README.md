@@ -4,6 +4,8 @@ A Synology DSM 7 package that runs a [SeaweedFS](https://github.com/seaweedfs/se
 
 The package authenticates to the Kubernetes apiserver with a service-account token to discover master endpoints (and, optionally, mTLS material), renders `weed volume` argv from a single config file, then execs the upstream `weed` binary. SeaweedFS does not authenticate volume↔master heartbeats, so cluster membership is gated by LAN reachability plus the `dataCenter` / `rack` / `ip` / `publicUrl` the volume self-reports. The kube token is purely for discovery.
 
+`weed` is built with the upstream `5BytesOffset` build tag so each volume can grow to 8000 GB instead of the 30 GB default; this is the right choice for DAS-attached Synology storage. Verify with `weed version` inside the SPK; the line should read `version 8000GB 4.23 ...`. The rest of the cluster's masters/filers must also be running 5-byte builds — operator-managed pods are typically 30 GB unless you have already pinned `5BytesOffset` upstream.
+
 ## Repo layout
 
 ```

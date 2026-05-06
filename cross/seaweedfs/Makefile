@@ -20,10 +20,15 @@ COMPILE_TARGET = seaweedfs_compile
 
 include ../../mk/spksrc.cross-go.mk
 
+# `5BytesOffset` is upstream's build tag for the large-volume variant.
+# It swaps weed/util/constants_4bytes.go (30 GB per volume) for
+# constants_5bytes.go (8000 GB per volume). Synology DAS volumes are
+# routinely larger than 30 GB, so we always build with this tag.
 .PHONY: seaweedfs_compile
 seaweedfs_compile:
-	@$(MSG) "- Build weed binary"
+	@$(MSG) "- Build weed binary (5BytesOffset, 8000GB per volume)"
 	@cd $(GO_SRC_DIR) && env $(ENV) go build \
+		-tags 5BytesOffset \
 		-ldflags "-s -w -X github.com/seaweedfs/seaweedfs/weed/util/version.COMMIT=$(PKG_VERS)" \
 		-buildvcs=false \
 		-o $(GO_BIN_DIR) \
