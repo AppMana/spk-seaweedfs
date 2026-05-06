@@ -9,7 +9,7 @@
 REPO_ROOT       := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 SPKSRC_DIR      := $(REPO_ROOT)/spksrc
 GO              ?= go
-TARGET_ARCH     ?= x86_64
+TARGET_ARCH     ?= x64
 TARGET_DSM      ?= 7.2
 SPK_TARGET      := arch-$(TARGET_ARCH)-$(TARGET_DSM)
 
