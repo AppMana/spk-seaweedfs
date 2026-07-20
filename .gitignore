@@ -14,3 +14,7 @@ cmd/synology-volume-bootstrap/synology-volume-bootstrap
 .idea/
 .vscode/
 *.swp
+lab/net/run/
+lab/.cache/
+lab/dsm/out/
+lab/**/secrets/

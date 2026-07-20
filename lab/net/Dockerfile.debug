@@ -1,0 +1,9 @@
+# Debug host for the containernet fabric. Containernet drives Docker
+# hosts through bash and configures them with iproute2, so both must be
+# present in the image (alpine lacks bash; stock ubuntu lacks iproute2).
+FROM ubuntu:24.04
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      iproute2 net-tools iputils-ping curl tcpdump netcat-openbsd dnsutils \
+ && rm -rf /var/lib/apt/lists/*
+CMD ["sleep", "infinity"]
