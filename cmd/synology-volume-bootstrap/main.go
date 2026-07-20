@@ -46,6 +46,7 @@ type config struct {
 		Insecure     bool   `yaml:"insecureSkipTLSVerify"`
 		Namespace    string `yaml:"namespace"`
 		SeaweedName  string `yaml:"seaweedName"`
+		Group        string `yaml:"group"`
 	} `yaml:"kube"`
 	Volume struct {
 		Dir        string `yaml:"dir"`
@@ -65,10 +66,21 @@ type config struct {
 	} `yaml:"mtls"`
 }
 
-var seaweedGVR = schema.GroupVersionResource{
-	Group:    "seaweed.seaweed.com",
-	Version:  "v1",
-	Resource: "seaweeds",
+// defaultSeaweedGroup is the API group of the upstream
+// seaweedfs-operator's Seaweed CRD. Overridable via kube.group for
+// operator forks that rename it.
+const defaultSeaweedGroup = "seaweed.seaweedfs.com"
+
+func seaweedGVR(c *config) schema.GroupVersionResource {
+	group := c.Kube.Group
+	if group == "" {
+		group = defaultSeaweedGroup
+	}
+	return schema.GroupVersionResource{
+		Group:    group,
+		Version:  "v1",
+		Resource: "seaweeds",
+	}
 }
 
 func main() {
@@ -219,7 +231,7 @@ func buildRESTConfig(c *config) (*rest.Config, error) {
 // CR's spec.master.replicas via the headless service if the master
 // Service does not yet exist.
 func discoverMasters(ctx context.Context, dyn dynamic.Interface, core kubernetes.Interface, c *config) (string, error) {
-	cr, err := dyn.Resource(seaweedGVR).Namespace(c.Kube.Namespace).Get(ctx, c.Kube.SeaweedName, metav1.GetOptions{})
+	cr, err := dyn.Resource(seaweedGVR(c)).Namespace(c.Kube.Namespace).Get(ctx, c.Kube.SeaweedName, metav1.GetOptions{})
 	if err != nil {
 		return "", fmt.Errorf("get Seaweed %s/%s: %w", c.Kube.Namespace, c.Kube.SeaweedName, err)
 	}

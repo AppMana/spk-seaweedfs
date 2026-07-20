@@ -11,7 +11,7 @@ metadata:
   name: synology-volume-server
   namespace: seaweedfs
 rules:
-  - apiGroups: ["seaweed.seaweed.com"]
+  - apiGroups: ["seaweed.seaweedfs.com"]
     resources: ["seaweeds"]
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]

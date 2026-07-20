@@ -53,7 +53,7 @@ KUBE_TOKEN=$(kubectl -n seaweedfs create token synology-volume-server --duration
 APISERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
 
 curl -sk -H "Authorization: Bearer ${KUBE_TOKEN}" \
-  "${APISERVER}/apis/seaweed.seaweed.com/v1/namespaces/seaweedfs/seaweeds/appmana" \
+  "${APISERVER}/apis/seaweed.seaweedfs.com/v1/namespaces/seaweedfs/seaweeds/appmana" \
   | jq '.spec.master.replicas, (.spec.master.grpcPort // 19333)'
 ```
 

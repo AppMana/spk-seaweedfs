@@ -19,7 +19,7 @@ import (
 func makeSeaweedCR(name, ns string, replicas int64, grpcPort int64) *unstructured.Unstructured {
 	u := &unstructured.Unstructured{}
 	u.SetGroupVersionKind(schema.GroupVersionKind{
-		Group:   "seaweed.seaweed.com",
+		Group:   "seaweed.seaweedfs.com",
 		Version: "v1",
 		Kind:    "Seaweed",
 	})
@@ -196,7 +196,7 @@ func TestDiscoverMasters_PortFallback(t *testing.T) {
 	// CR with master.port set (HTTP), no grpcPort → derived = port + 10000.
 	u := &unstructured.Unstructured{}
 	u.SetGroupVersionKind(schema.GroupVersionKind{
-		Group: "seaweed.seaweed.com", Version: "v1", Kind: "Seaweed",
+		Group: "seaweed.seaweedfs.com", Version: "v1", Kind: "Seaweed",
 	})
 	u.SetName("appmana")
 	u.SetNamespace("seaweedfs")
