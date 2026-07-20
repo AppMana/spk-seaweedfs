@@ -1,0 +1,27 @@
+# Lab Seaweed CR, fork leg: image is the locally-built AppMana fork
+# (large_disk / 5BytesOffset) served by the lab registry.
+# volumeSizeLimitMB stays small so 30GB-offset and 8000GB-offset builds
+# are equally valid cluster members.
+apiVersion: seaweed.seaweedfs.com/v1
+kind: Seaweed
+metadata:
+  name: seaweed1
+  namespace: seaweedfs
+spec:
+  image: 172.21.240.10:5000/seaweedfs:fork-large-disk
+  volumeServerDiskCount: 1
+  master:
+    replicas: 1
+    volumeSizeLimitMB: 1024
+  volume:
+    replicas: 1
+    requests:
+      storage: 2Gi
+    dataCenter: lab
+    rack: incluster
+  filer:
+    replicas: 1
+    config: |
+      [leveldb2]
+      enabled = true
+      dir = "/data/filerldb2"

@@ -1,0 +1,26 @@
+# Lab Seaweed CR, upstream leg: genuine upstream image from docker.io.
+# Identical to seaweed-fork.yaml except for the image, so switching legs
+# is a rolling image swap of the same CR.
+apiVersion: seaweed.seaweedfs.com/v1
+kind: Seaweed
+metadata:
+  name: seaweed1
+  namespace: seaweedfs
+spec:
+  image: chrislusf/seaweedfs:latest
+  volumeServerDiskCount: 1
+  master:
+    replicas: 1
+    volumeSizeLimitMB: 1024
+  volume:
+    replicas: 1
+    requests:
+      storage: 2Gi
+    dataCenter: lab
+    rack: incluster
+  filer:
+    replicas: 1
+    config: |
+      [leveldb2]
+      enabled = true
+      dir = "/data/filerldb2"

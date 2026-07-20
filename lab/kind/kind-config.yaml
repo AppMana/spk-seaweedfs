@@ -1,0 +1,15 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: swlab
+nodes:
+  - role: control-plane
+networking:
+  podSubnet: 10.244.0.0/16
+  serviceSubnet: 10.96.0.0/16
+containerdConfigPatches:
+  # hosts.toml directory; cluster-up.sh drops a plain-HTTP entry for the
+  # lab registry in there (containerd 2.x dropped the legacy
+  # registry.mirrors config keys).
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      config_path = "/etc/containerd/certs.d"
