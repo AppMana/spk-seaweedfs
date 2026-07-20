@@ -34,20 +34,24 @@ SPK=$(find "$REPO/spksrc/packages" -name 'seaweedfs_*.spk' | head -1)
 [ -n "$SPK" ] || { echo "no SPK built — run make in the repo root" >&2; exit 1; }
 
 SSH=(sshpass -p "$DSM_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$DSM_USER@$DSM_IP")
-SCP=(sshpass -p "$DSM_PASS" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null)
+# DSM's sshd doesn't run an sftp-server by default (only forceEnableDSMTelnetSSH's
+# plain SSH), so the sftp-based scp protocol fails with "subsystem
+# request failed" — force the legacy scp exec protocol instead.
+SCP=(sshpass -p "$DSM_PASS" scp -O -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null)
 SUDO="echo '$DSM_PASS' | sudo -S -p ''"
 
 "${SCP[@]}" "$SPK" "$LAB/kind/run/token" "$LAB/kind/run/ca.crt" "$DSM_USER@$DSM_IP:/tmp/"
 
 "${SSH[@]}" "set -e
-  $SUDO test -d /volume1/seaweed || { echo 'shared folder seaweed missing (create in DSM UI)'; exit 1; }
-  if ! $SUDO synopkg status seaweedfs >/dev/null 2>&1; then
-    $SUDO synopkg install /tmp/$(basename "$SPK")
+  $SUDO mkdir -p /volume1/seaweed && $SUDO chmod 777 /volume1/seaweed
+  if ! $SUDO /usr/syno/bin/synopkg status seaweedfs >/dev/null 2>&1; then
+    $SUDO /usr/syno/bin/synopkg install /tmp/$(basename "$SPK")
   fi
-  $SUDO synopkg stop seaweedfs >/dev/null 2>&1 || true
+  $SUDO /usr/syno/bin/synopkg stop seaweedfs >/dev/null 2>&1 || true
 
   PKGVAR=/var/packages/seaweedfs/var
-  $SUDO mkdir -p \$PKGVAR/kube \$PKGVAR/run \$PKGVAR/log
+  $SUDO mkdir -p \$PKGVAR/kube \$PKGVAR/run \$PKGVAR/log \$PKGVAR/oci
+  $SUDO chown sc-seaweedfs:synocommunity \$PKGVAR/oci
   $SUDO cp /tmp/token \$PKGVAR/kube/token
   $SUDO cp /tmp/ca.crt \$PKGVAR/kube/ca.crt
   $SUDO chmod 600 \$PKGVAR/kube/token
@@ -78,13 +82,14 @@ weed:
   binaries: []
   cacheDir: /var/packages/seaweedfs/var/oci
 EOF
+  $SUDO chown sc-seaweedfs:synocommunity \$PKGVAR/volume.yaml \$PKGVAR/kube/token \$PKGVAR/kube/ca.crt
   $SUDO chmod 600 \$PKGVAR/volume.yaml
   # Master discovery returns pod IPs; route them via the kind node.
   # Not persistent across VM reboots — this script re-asserts it.
   $SUDO ip route replace 10.244.0.0/16 via ${CONTROL_PLANE_IP}
-  $SUDO synopkg start seaweedfs
+  $SUDO /usr/syno/bin/synopkg start seaweedfs
   sleep 4
-  $SUDO synopkg status seaweedfs
+  $SUDO /usr/syno/bin/synopkg status seaweedfs
   $SUDO tail -5 \$PKGVAR/log/weed.log || true
 "
 echo "provisioned: weed.image='${WEED_IMAGE:-<bundled>}'"

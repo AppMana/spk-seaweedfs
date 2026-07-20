@@ -5,7 +5,8 @@
 #   make cluster-up     kind swlab + seaweedfs-operator + RBAC/token
 #   make seaweed-fork   apply the fork-image Seaweed CR
 #   make seaweed-upstream  switch the CR to the upstream image
-#   make vm-up          boot the xpenology DSM VM   (one-time manual DSM install: dsm/README.md)
+#   make vm-up           boot the xpenology DSM VM (fetches the RR loader if needed)
+#   make dsm-storage     create the storage pool/volume/seaweed dir (needs DSM_USER/DSM_PASS)
 #   make provision-fork / provision-upstream / provision-bundled   (needs DSM_USER/DSM_PASS)
 #   make verify-fork / verify-upstream / verify-bundled
 #   make down           tear down VM, cluster, topology, fabric (registry + images stay)
@@ -38,6 +39,9 @@ seaweed-upstream:
 vm-up:
 	$(DIR)dsm/fetch-rr.sh
 	$(DIR)dsm/vm-up.sh
+
+dsm-storage:
+	$(DIR)dsm/create-storage.sh
 
 provision-fork:
 	. $(DIR)registry/run/registry.env && \
