@@ -16,7 +16,7 @@ import (
 	corefake "k8s.io/client-go/kubernetes/fake"
 )
 
-func makeSeaweedCR(name, ns string, replicas int64, grpcPort int64) *unstructured.Unstructured {
+func makeSeaweedCR(name, ns string, replicas int64) *unstructured.Unstructured {
 	u := &unstructured.Unstructured{}
 	u.SetGroupVersionKind(schema.GroupVersionKind{
 		Group:   "seaweed.seaweedfs.com",
@@ -28,7 +28,6 @@ func makeSeaweedCR(name, ns string, replicas int64, grpcPort int64) *unstructure
 	u.Object["spec"] = map[string]any{
 		"master": map[string]any{
 			"replicas": replicas,
-			"grpcPort": grpcPort,
 		},
 	}
 	return u
@@ -134,7 +133,7 @@ func TestValidate_Required(t *testing.T) {
 }
 
 func TestDiscoverMasters_FromHeadlessFallback(t *testing.T) {
-	cr := makeSeaweedCR("appmana", "seaweedfs", 3, 19333)
+	cr := makeSeaweedCR("appmana", "seaweedfs", 3)
 	scheme := runtime.NewScheme()
 	dyn := dynfake.NewSimpleDynamicClient(scheme, cr)
 	core := corefake.NewSimpleClientset() // no Service objects → falls back to constructed DNS
@@ -147,14 +146,16 @@ func TestDiscoverMasters_FromHeadlessFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("discoverMasters: %v", err)
 	}
-	want := "appmana-master-0.appmana-master.seaweedfs.svc:19333,appmana-master-1.appmana-master.seaweedfs.svc:19333,appmana-master-2.appmana-master.seaweedfs.svc:19333"
+	// :9333 (HTTP port) — weed volume's -mserver derives the gRPC port
+	// itself by adding 10000; passing 19333 here would make it dial 29333.
+	want := "appmana-master-0.appmana-master.seaweedfs.svc:9333,appmana-master-1.appmana-master.seaweedfs.svc:9333,appmana-master-2.appmana-master.seaweedfs.svc:9333"
 	if got != want {
 		t.Errorf("masters mismatch\n got: %s\nwant: %s", got, want)
 	}
 }
 
 func TestDiscoverMasters_FromService(t *testing.T) {
-	cr := makeSeaweedCR("appmana", "seaweedfs", 3, 19333)
+	cr := makeSeaweedCR("appmana", "seaweedfs", 3)
 	scheme := runtime.NewScheme()
 	dyn := dynfake.NewSimpleDynamicClient(scheme, cr)
 
@@ -163,6 +164,7 @@ func TestDiscoverMasters_FromService(t *testing.T) {
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "10.96.7.10",
 			Ports: []corev1.ServicePort{
+				{Name: "master-http", Port: 9333},
 				{Name: "master-grpc", Port: 19333},
 			},
 		},
@@ -187,13 +189,15 @@ func TestDiscoverMasters_FromService(t *testing.T) {
 	if err != nil {
 		t.Fatalf("discoverMasters: %v", err)
 	}
-	if !strings.Contains(got, "10.96.7.10:19333") || !strings.Contains(got, "10.96.7.12:19333") {
-		t.Errorf("expected pod IPs from Endpoints, got: %s", got)
+	if !strings.Contains(got, "10.96.7.10:9333") || !strings.Contains(got, "10.96.7.12:9333") {
+		t.Errorf("expected pod IPs with the HTTP port, got: %s", got)
+	}
+	if strings.Contains(got, "19333") {
+		t.Errorf("mserver must carry the HTTP port, not the gRPC port: %s", got)
 	}
 }
 
 func TestDiscoverMasters_PortFallback(t *testing.T) {
-	// CR with master.port set (HTTP), no grpcPort → derived = port + 10000.
 	u := &unstructured.Unstructured{}
 	u.SetGroupVersionKind(schema.GroupVersionKind{
 		Group: "seaweed.seaweedfs.com", Version: "v1", Kind: "Seaweed",
@@ -203,7 +207,7 @@ func TestDiscoverMasters_PortFallback(t *testing.T) {
 	u.Object["spec"] = map[string]any{
 		"master": map[string]any{
 			"replicas": int64(1),
-			"port":     int64(9333),
+			"port":     int64(9443),
 		},
 	}
 	scheme := runtime.NewScheme()
@@ -218,8 +222,8 @@ func TestDiscoverMasters_PortFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("discoverMasters: %v", err)
 	}
-	if !strings.HasSuffix(got, ":19333") {
-		t.Errorf("expected derived gRPC port 19333, got %s", got)
+	if !strings.HasSuffix(got, ":9443") {
+		t.Errorf("expected the CR's custom HTTP port 9443, got %s", got)
 	}
 }
 

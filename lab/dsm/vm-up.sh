@@ -39,7 +39,7 @@ qemu-system-x86_64 \
   -netdev tap,id=n0,ifname=tap-dsm,script=no,downscript=no \
   -device "$NIC_MODEL",netdev=n0,mac="$MAC" \
   -vnc "127.0.0.1${VNC_DISPLAY}" \
-  -serial file:"$OUT/serial.log" \
+  -serial telnet:127.0.0.1:5809,server,nowait \
   -daemonize -pidfile "$OUT/qemu.pid"
 
 echo "DSM VM up (VNC 127.0.0.1${VNC_DISPLAY#:*}, serial $OUT/serial.log)"

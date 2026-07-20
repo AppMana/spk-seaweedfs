@@ -34,5 +34,6 @@ include ../../mk/spksrc.spk.mk
 seaweedfs_extra_install:
 	install -m 755 -d $(STAGING_DIR)/bin
 	install -m 755 src/bin/synology-volume-bootstrap $(STAGING_DIR)/bin/synology-volume-bootstrap
+	install -m 755 src/run.sh $(STAGING_DIR)/bin/run.sh
 	install -m 755 -d $(STAGING_DIR)/var
 	install -m 644 src/volume_template.yaml $(STAGING_DIR)/var/volume_template.yaml

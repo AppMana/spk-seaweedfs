@@ -250,8 +250,13 @@ func buildRESTConfig(c *config) (*rest.Config, error) {
 }
 
 // discoverMasters returns the comma-separated value passed to `weed
-// volume -mserver=`. It reads the master Service object exposed by the
-// operator (preferred over hard-coded DNS names because the operator's
+// volume -mserver=`. That flag takes each master's HTTP port, not its
+// gRPC port: weed derives the gRPC port itself by adding 10000
+// (pb.ServerToGrpcAddress). Passing the gRPC port here makes the
+// volume server dial http_port+20000 and fail to connect.
+//
+// It reads the master Service object exposed by the operator
+// (preferred over hard-coded DNS names because the operator's
 // service-name format may drift between releases). Falls back to the
 // CR's spec.master.replicas via the headless service if the master
 // Service does not yet exist.
@@ -261,7 +266,7 @@ func discoverMasters(ctx context.Context, dyn dynamic.Interface, core kubernetes
 		return "", fmt.Errorf("get Seaweed %s/%s: %w", c.Kube.Namespace, c.Kube.SeaweedName, err)
 	}
 
-	masterPort := masterGRPCPort(cr)
+	masterPort := masterHTTPPort(cr)
 	if endpoints, err := masterEndpointsFromService(ctx, core, c, masterPort); err == nil && endpoints != "" {
 		return endpoints, nil
 	}
@@ -296,10 +301,10 @@ func masterEndpointsFromService(ctx context.Context, core kubernetes.Interface, 
 		if err != nil {
 			return "", err
 		}
-		grpcPort := int32(port)
+		httpPort := int32(port)
 		for _, p := range svc.Spec.Ports {
-			if p.Name == "master-grpc" || p.Name == "grpc" || p.Port == int32(port) {
-				grpcPort = p.Port
+			if p.Name == "master-http" || p.Name == "http" || p.Port == int32(port) {
+				httpPort = p.Port
 				break
 			}
 		}
@@ -310,7 +315,7 @@ func masterEndpointsFromService(ctx context.Context, core kubernetes.Interface, 
 				if a.Hostname != "" && svc.Spec.ClusterIP == corev1.ClusterIPNone {
 					host = fmt.Sprintf("%s.%s.%s.svc", a.Hostname, name, c.Kube.Namespace)
 				}
-				addrs = append(addrs, fmt.Sprintf("%s:%d", host, grpcPort))
+				addrs = append(addrs, fmt.Sprintf("%s:%d", host, httpPort))
 			}
 		}
 		if len(addrs) > 0 {
@@ -328,16 +333,13 @@ func masterReplicas(cr *unstructured.Unstructured) int64 {
 	return 0
 }
 
-// SeaweedFS master gRPC port. The operator exposes it via the master's
-// Service; defaults to 9333 (HTTP) + 10000 = 19333.
-func masterGRPCPort(cr *unstructured.Unstructured) int {
-	if p, found, _ := unstructured.NestedInt64(cr.Object, "spec", "master", "grpcPort"); found {
+// SeaweedFS master HTTP port — what `-mserver=` expects. The operator
+// exposes it via the master's Service; defaults to 9333.
+func masterHTTPPort(cr *unstructured.Unstructured) int {
+	if p, found, _ := unstructured.NestedInt64(cr.Object, "spec", "master", "port"); found {
 		return int(p)
 	}
-	if p, found, _ := unstructured.NestedInt64(cr.Object, "spec", "master", "port"); found {
-		return int(p) + 10000
-	}
-	return 19333
+	return 9333
 }
 
 // materializeMTLS pulls tls.crt / tls.key / ca.crt from a Secret in the

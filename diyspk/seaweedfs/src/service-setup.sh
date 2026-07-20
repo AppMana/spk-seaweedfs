@@ -4,29 +4,23 @@ VOLUME_YAML="${SYNOPKG_PKGVAR}/volume.yaml"
 KUBE_DIR="${SYNOPKG_PKGVAR}/kube"
 TLS_DIR="${SYNOPKG_PKGVAR}/tls"
 RUN_DIR="${SYNOPKG_PKGVAR}/run"
-ARGV_FILE="${RUN_DIR}/argv"
-WEED_BIN_FILE="${RUN_DIR}/weed_bin"
+OCI_DIR="${SYNOPKG_PKGVAR}/oci"
 LOG_FILE="${SYNOPKG_PKGVAR}/log/weed.log"
-
-BOOTSTRAP_BIN="${SYNOPKG_PKGDEST}/bin/synology-volume-bootstrap"
-WEED_BIN="${SYNOPKG_PKGDEST}/bin/weed"
 
 SVC_BACKGROUND=y
 SVC_WRITE_PID=y
 
-# Render argv via the bootstrap, then exec weed volume with the result.
-# The bootstrap resolves weed.image (volume.yaml) into an extracted
-# binary path written to ${WEED_BIN_FILE}; empty/absent means run the
-# binary packaged in the SPK.
-SERVICE_COMMAND="/bin/sh -c 'set -e; \
-  \"${BOOTSTRAP_BIN}\" --config \"${VOLUME_YAML}\" --out \"${ARGV_FILE}\" --tls-dir \"${TLS_DIR}\" --weed-bin-out \"${WEED_BIN_FILE}\" >> \"${LOG_FILE}\" 2>&1; \
-  RUN_WEED=\"${WEED_BIN}\"; \
-  if [ -s \"${WEED_BIN_FILE}\" ]; then W=\$(head -n 1 \"${WEED_BIN_FILE}\"); [ -n \"\$W\" ] && RUN_WEED=\"\$W\"; fi; \
-  set --; while IFS= read -r line; do [ -n \"\$line\" ] && set -- \"\$@\" \"\$line\"; done < \"${ARGV_FILE}\"; \
-  exec \"\$RUN_WEED\" volume \"\$@\" >> \"${LOG_FILE}\" 2>&1'"
+# start-stop-status reads SERVICE_COMMAND with `read -r` and then runs
+# it UNQUOTED (`${service} >> "${OUT}" 2>&1 &`), so it is subject to
+# word-splitting with no quote removal — any quotes/semicolons/redirects
+# embedded in the value are corrupted before a shell ever parses them.
+# SERVICE_COMMAND must therefore be a single bare path with no shell
+# metacharacters; the actual logic (bootstrap + exec weed) lives in
+# run.sh, which does its own quoting once it's actually executing.
+SERVICE_COMMAND="${SYNOPKG_PKGDEST}/bin/run.sh"
 
 service_postinst() {
-    install -d -m 700 -o "${SC_USER:-sc-${SYNOPKG_PKGNAME}}" "${KUBE_DIR}" "${TLS_DIR}" "${RUN_DIR}"
+    install -d -m 700 -o "${SC_USER:-sc-${SYNOPKG_PKGNAME}}" "${KUBE_DIR}" "${TLS_DIR}" "${RUN_DIR}" "${OCI_DIR}"
     install -d -m 755 "${SYNOPKG_PKGVAR}/log"
     : > "${LOG_FILE}"
 
@@ -100,5 +94,5 @@ service_preuninst() {
 
 service_postupgrade() {
     # Recreate state directories in case ownership/perms drifted.
-    install -d -m 700 -o "${SC_USER:-sc-${SYNOPKG_PKGNAME}}" "${KUBE_DIR}" "${TLS_DIR}" "${RUN_DIR}"
+    install -d -m 700 -o "${SC_USER:-sc-${SYNOPKG_PKGNAME}}" "${KUBE_DIR}" "${TLS_DIR}" "${RUN_DIR}" "${OCI_DIR}"
 }
