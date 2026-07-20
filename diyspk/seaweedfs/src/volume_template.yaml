@@ -32,3 +32,14 @@ volume:
 
 mtls:
   secretName: @MTLS_SECRET@
+
+# Optional: source the weed binary from an OCI image instead of the one
+# packaged in the SPK. The bootstrap pulls the image (anonymously),
+# extracts the listed binaries, and caches them by digest under
+# cacheDir. Clear image and restart to revert to the packaged binary.
+weed:
+  image: "@WEED_IMAGE@"
+  digest: ""
+  plainHTTP: @WEED_PLAIN_HTTP@
+  binaries: []          # default: [/usr/bin/weed]
+  cacheDir: @PKGVAR@/oci

@@ -55,6 +55,21 @@ See [docs/install-cli.md](docs/install-cli.md) for the SSH-based path. The DSM P
 
 Single source of truth is `/var/packages/seaweedfs/var/volume.yaml`. The DSM wizard writes this file from form inputs; the SSH path edits it directly. They are bit-for-bit equivalent. See [docs/configure-cli.md](docs/configure-cli.md).
 
+## Sourcing `weed` from an OCI image
+
+By default the SPK runs the `weed` bundled at build time. Setting `weed.image`
+in `volume.yaml` (or the wizard field) makes the bootstrap pull that OCI image
+at package start, extract the configured `weed.binaries` (default
+`/usr/bin/weed`), cache them by manifest digest under `weed.cacheDir`
+(default `$SYNOPKG_PKGVAR/oci`), and exec the extracted binary instead. This
+switches a NAS between SeaweedFS builds — e.g. a fork's `_large_disk` image
+and genuine upstream — with a config edit plus `synopkg restart seaweedfs`,
+no repackaging. `weed.digest` pins the manifest; `weed.plainHTTP: true`
+allows local registries without TLS. Restarts reuse the digest cache without
+network access, and when a mutable tag can't be resolved offline the
+bootstrap falls back to the last extracted image. Clearing `weed.image`
+reverts to the bundled binary on the next restart.
+
 ## How it joins the cluster
 
 1. `service_prestart` runs `synology-volume-bootstrap`.

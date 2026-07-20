@@ -64,6 +64,13 @@ type config struct {
 	MTLS struct {
 		SecretName string `yaml:"secretName"`
 	} `yaml:"mtls"`
+	Weed struct {
+		Image     string   `yaml:"image"`
+		Digest    string   `yaml:"digest"`
+		PlainHTTP bool     `yaml:"plainHTTP"`
+		Binaries  []string `yaml:"binaries"`
+		CacheDir  string   `yaml:"cacheDir"`
+	} `yaml:"weed"`
 }
 
 // defaultSeaweedGroup is the API group of the upstream
@@ -88,6 +95,7 @@ func main() {
 		configPath = flag.String("config", os.Getenv("BOOTSTRAP_CONFIG"), "path to volume.yaml")
 		outPath    = flag.String("out", os.Getenv("BOOTSTRAP_OUT"), "argv output file (one flag per line)")
 		tlsDir     = flag.String("tls-dir", os.Getenv("BOOTSTRAP_TLS_DIR"), "directory to write mTLS material into")
+		weedBinOut = flag.String("weed-bin-out", os.Getenv("BOOTSTRAP_WEED_BIN_OUT"), "file to write the resolved weed binary path into (empty when weed.image is unset)")
 		printOnly  = flag.Bool("print-only", false, "print argv to stdout, do not write any file")
 		timeout    = flag.Duration("timeout", 30*time.Second, "kube discovery timeout")
 	)
@@ -120,6 +128,11 @@ func main() {
 		fatal("dynamic client: %v", err)
 	}
 
+	weedBin, err := materializeWeed(ctx, cfg)
+	if err != nil {
+		fatal("materialize weed from OCI image: %v", err)
+	}
+
 	masters, err := discoverMasters(ctx, dyn, core, cfg)
 	if err != nil {
 		fatal("discover masters: %v", err)
@@ -133,6 +146,9 @@ func main() {
 	args := renderArgs(cfg, masters, tlsArgs)
 
 	if *printOnly {
+		if weedBin != "" {
+			fmt.Fprintf(os.Stderr, "weed binary: %s\n", weedBin)
+		}
 		for _, a := range args {
 			fmt.Println(a)
 		}
@@ -143,6 +159,15 @@ func main() {
 	}
 	if err := writeArgv(*outPath, args); err != nil {
 		fatal("write argv: %v", err)
+	}
+	if *weedBinOut != "" {
+		// Written even when empty so a weed.image removal reverts the
+		// service to the packaged binary on the next restart.
+		if err := writeArgv(*weedBinOut, []string{weedBin}); err != nil {
+			fatal("write weed-bin-out: %v", err)
+		}
+	} else if weedBin != "" {
+		fatal("weed.image set but --weed-bin-out (or $BOOTSTRAP_WEED_BIN_OUT) missing")
 	}
 	fmt.Fprintf(os.Stderr, "wrote %d argv lines to %s\n", len(args), *outPath)
 }

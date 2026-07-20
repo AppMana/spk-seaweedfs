@@ -152,6 +152,26 @@
                   "defaultValue": ""
                }
             ]
+         },
+         {
+            "type": "textfield",
+            "subitems": [
+               {
+                  "key": "wizard_weed_image",
+                  "desc": "(Optional) OCI image to pull the weed binary from (e.g. chrislusf/seaweedfs:4.23_large_disk). Empty runs the binary bundled in this package.",
+                  "defaultValue": ""
+               }
+            ]
+         },
+         {
+            "type": "multiselect",
+            "subitems": [
+               {
+                  "key": "wizard_weed_plain_http",
+                  "desc": "Pull the OCI image over plain HTTP (local/insecure registries only)",
+                  "defaultValue": false
+               }
+            ]
          }
       ]
    }

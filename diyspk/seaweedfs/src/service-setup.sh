@@ -5,6 +5,7 @@ KUBE_DIR="${SYNOPKG_PKGVAR}/kube"
 TLS_DIR="${SYNOPKG_PKGVAR}/tls"
 RUN_DIR="${SYNOPKG_PKGVAR}/run"
 ARGV_FILE="${RUN_DIR}/argv"
+WEED_BIN_FILE="${RUN_DIR}/weed_bin"
 LOG_FILE="${SYNOPKG_PKGVAR}/log/weed.log"
 
 BOOTSTRAP_BIN="${SYNOPKG_PKGDEST}/bin/synology-volume-bootstrap"
@@ -14,10 +15,15 @@ SVC_BACKGROUND=y
 SVC_WRITE_PID=y
 
 # Render argv via the bootstrap, then exec weed volume with the result.
+# The bootstrap resolves weed.image (volume.yaml) into an extracted
+# binary path written to ${WEED_BIN_FILE}; empty/absent means run the
+# binary packaged in the SPK.
 SERVICE_COMMAND="/bin/sh -c 'set -e; \
-  \"${BOOTSTRAP_BIN}\" --config \"${VOLUME_YAML}\" --out \"${ARGV_FILE}\" --tls-dir \"${TLS_DIR}\" >> \"${LOG_FILE}\" 2>&1; \
+  \"${BOOTSTRAP_BIN}\" --config \"${VOLUME_YAML}\" --out \"${ARGV_FILE}\" --tls-dir \"${TLS_DIR}\" --weed-bin-out \"${WEED_BIN_FILE}\" >> \"${LOG_FILE}\" 2>&1; \
+  RUN_WEED=\"${WEED_BIN}\"; \
+  if [ -s \"${WEED_BIN_FILE}\" ]; then W=\$(head -n 1 \"${WEED_BIN_FILE}\"); [ -n \"\$W\" ] && RUN_WEED=\"\$W\"; fi; \
   set --; while IFS= read -r line; do [ -n \"\$line\" ] && set -- \"\$@\" \"\$line\"; done < \"${ARGV_FILE}\"; \
-  exec \"${WEED_BIN}\" volume \"\$@\" >> \"${LOG_FILE}\" 2>&1'"
+  exec \"\$RUN_WEED\" volume \"\$@\" >> \"${LOG_FILE}\" 2>&1'"
 
 service_postinst() {
     install -d -m 700 -o "${SC_USER:-sc-${SYNOPKG_PKGNAME}}" "${KUBE_DIR}" "${TLS_DIR}" "${RUN_DIR}"
@@ -56,6 +62,10 @@ service_postinst() {
         if [ "${wizard_insecure}" = "true" ]; then
             INSECURE="true"
         fi
+        WEED_PLAIN_HTTP="false"
+        if [ "${wizard_weed_plain_http}" = "true" ]; then
+            WEED_PLAIN_HTTP="true"
+        fi
 
         sed \
             -e "s|@APISERVER@|${wizard_apiserver}|g" \
@@ -72,6 +82,8 @@ service_postinst() {
             -e "s|@MAX_VOLUMES@|${wizard_max_volumes}|g" \
             -e "s|@DISK_TYPE@|${wizard_disk_type}|g" \
             -e "s|@MTLS_SECRET@|${wizard_mtls_secret}|g" \
+            -e "s|@WEED_IMAGE@|${wizard_weed_image}|g" \
+            -e "s|@WEED_PLAIN_HTTP@|${WEED_PLAIN_HTTP}|g" \
             "${SYNOPKG_PKGDEST}/var/volume_template.yaml" > "${VOLUME_YAML}"
 
         chown "${SC_USER:-sc-${SYNOPKG_PKGNAME}}" "${VOLUME_YAML}"
