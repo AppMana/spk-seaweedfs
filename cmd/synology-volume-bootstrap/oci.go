@@ -71,33 +71,51 @@ func materializeWeed(ctx context.Context, c *config) (string, error) {
 		remote.WithPlatform(v1.Platform{OS: "linux", Architecture: "amd64"}),
 	}
 
-	digest, err := resolveDigest(ref, c.Weed.Digest, remoteOpts)
+	// A pin lets us name the cache entry without touching the network at
+	// all on a hit. Without one, the digest can only be learned by
+	// resolving the image itself (see below) — a HEAD on the reference
+	// is NOT equivalent: for a multi-arch tag it returns the manifest
+	// LIST's digest, while the platform-aware pull below resolves to a
+	// child image with a different digest, so comparing the two would
+	// always "mismatch" even on a perfectly good pull.
+	if c.Weed.Digest != "" {
+		pinned, err := v1.NewHash(c.Weed.Digest)
+		if err != nil {
+			return "", fmt.Errorf("weed.digest: %w", err)
+		}
+		entryDir := ociEntryDir(cacheDir, pinned)
+		if p, err := cachedEntry(entryDir, binaries); err == nil {
+			if err := setCurrent(cacheDir, entryDir); err != nil {
+				return "", err
+			}
+			return p, nil
+		}
+	}
+
+	img, err := remote.Image(ref, remoteOpts...)
 	if err != nil {
-		// Tag resolution needs the registry; fall back to the last
+		// Tag/pull resolution needs the registry; fall back to the last
 		// successfully extracted entry so offline restarts keep working.
 		if p, ferr := cachedCurrent(cacheDir, binaries); ferr == nil {
 			fmt.Fprintf(os.Stderr, "synology-volume-bootstrap: registry unreachable (%v); using cached %s\n", err, p)
 			return p, nil
 		}
-		return "", fmt.Errorf("resolve weed.image digest: %w", err)
+		return "", fmt.Errorf("pull %s: %w", ref, err)
+	}
+	digest, err := img.Digest()
+	if err != nil {
+		return "", err
+	}
+	if c.Weed.Digest != "" && digest.String() != c.Weed.Digest {
+		return "", fmt.Errorf("weed.image resolved to %s, expected weed.digest %s", digest, c.Weed.Digest)
 	}
 
-	entryDir := filepath.Join(cacheDir, strings.Replace(digest.String(), ":", "-", 1))
+	entryDir := ociEntryDir(cacheDir, digest)
 	if p, err := cachedEntry(entryDir, binaries); err == nil {
 		if err := setCurrent(cacheDir, entryDir); err != nil {
 			return "", err
 		}
 		return p, nil
-	}
-
-	img, err := remote.Image(ref, remoteOpts...)
-	if err != nil {
-		return "", fmt.Errorf("pull %s: %w", ref, err)
-	}
-	if got, err := img.Digest(); err != nil {
-		return "", err
-	} else if got != digest {
-		return "", fmt.Errorf("weed.image digest mismatch: manifest %s, expected %s", got, digest)
 	}
 
 	extracted, err := extractFromImage(img, binaries, entryDir)
@@ -113,28 +131,8 @@ func materializeWeed(ctx context.Context, c *config) (string, error) {
 	return weedPath(extracted), nil
 }
 
-// resolveDigest returns the manifest digest for ref. A configured
-// weed.digest pin wins without touching the network; otherwise the
-// registry is consulted (HEAD).
-func resolveDigest(ref name.Reference, pin string, remoteOpts []remote.Option) (v1.Hash, error) {
-	if d, ok := ref.(name.Digest); ok {
-		h, err := v1.NewHash(d.DigestStr())
-		if err != nil {
-			return v1.Hash{}, err
-		}
-		if pin != "" && pin != h.String() {
-			return v1.Hash{}, fmt.Errorf("weed.digest %q contradicts digest reference %q", pin, h)
-		}
-		return h, nil
-	}
-	if pin != "" {
-		return v1.NewHash(pin)
-	}
-	desc, err := remote.Head(ref, remoteOpts...)
-	if err != nil {
-		return v1.Hash{}, err
-	}
-	return desc.Digest, nil
+func ociEntryDir(cacheDir string, digest v1.Hash) string {
+	return filepath.Join(cacheDir, strings.Replace(digest.String(), ":", "-", 1))
 }
 
 // cachedEntry returns the weed path inside a complete cache entry.

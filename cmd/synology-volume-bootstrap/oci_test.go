@@ -12,11 +12,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/crane"
+	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 )
 
@@ -174,7 +176,7 @@ func TestMaterializeWeed_DigestPinMismatch(t *testing.T) {
 	c := ociConfig(ref, t.TempDir())
 	c.Weed.Digest = "sha256:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
 	_, err := materializeWeed(context.Background(), c)
-	if err == nil || !contains(err.Error(), "digest mismatch") {
+	if err == nil || !contains(err.Error(), "expected weed.digest") {
 		t.Fatalf("expected digest mismatch, got %v", err)
 	}
 }
@@ -230,6 +232,62 @@ func TestMaterializeWeed_MultipleBinaries(t *testing.T) {
 	}
 	if data, _ := os.ReadFile(filepath.Join(filepath.Dir(got), "weed-volume")); string(data) != "rust-weed" {
 		t.Errorf("weed-volume content = %q", data)
+	}
+}
+
+// TestMaterializeWeed_MultiArchIndex is a regression test for a real
+// bug: resolving the digest via an unqualified remote.Head (or any
+// non-platform-aware call) returns the manifest LIST's digest, while
+// the platform-aware pull below resolves a CHILD image with a
+// different digest — comparing the two always "mismatched" even on a
+// perfectly good pull, exactly as chrislusf/seaweedfs:latest did
+// against a live registry (2026-07-20). materializeWeed must resolve
+// and cache by the child image's digest, never the index's.
+func TestMaterializeWeed_MultiArchIndex(t *testing.T) {
+	amd64Img := imageFromLayers(t, tarLayer(t, map[string]string{"usr/bin/weed": "amd64-weed"}))
+	arm64Img := imageFromLayers(t, tarLayer(t, map[string]string{"usr/bin/weed": "arm64-weed"}))
+
+	idx := mutate.AppendManifests(empty.Index,
+		mutate.IndexAddendum{Add: amd64Img, Descriptor: v1.Descriptor{Platform: &v1.Platform{OS: "linux", Architecture: "amd64"}}},
+		mutate.IndexAddendum{Add: arm64Img, Descriptor: v1.Descriptor{Platform: &v1.Platform{OS: "linux", Architecture: "arm64"}}},
+	)
+	indexDigest, err := idx.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	amd64Digest, err := amd64Img.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(registry.New(registry.Logger(log.New(io.Discard, "", 0))))
+	defer srv.Close()
+	u, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refStr := u.Host + "/test/weed:multiarch"
+	ref, err := name.ParseReference(refStr, name.Insecure)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := remote.WriteIndex(ref, idx); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := materializeWeed(context.Background(), ociConfig(refStr, t.TempDir()))
+	if err != nil {
+		t.Fatalf("materializeWeed: %v", err)
+	}
+	if data, _ := os.ReadFile(got); string(data) != "amd64-weed" {
+		t.Errorf("extracted %q, want the amd64 child image's content", data)
+	}
+	cacheDirName := filepath.Base(filepath.Dir(got))
+	if wantDir := "sha256-" + amd64Digest.Hex; cacheDirName != wantDir {
+		t.Errorf("cached under %s, want %s (the child image digest)", cacheDirName, wantDir)
+	}
+	if cacheDirName == "sha256-"+indexDigest.Hex {
+		t.Errorf("cached under the manifest-list digest instead of the resolved child image digest")
 	}
 }
 
