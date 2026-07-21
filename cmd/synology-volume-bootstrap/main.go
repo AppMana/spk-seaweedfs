@@ -40,13 +40,24 @@ import (
 
 type config struct {
 	Kube struct {
-		APIServer    string `yaml:"apiserver"`
-		TokenFile    string `yaml:"tokenFile"`
-		CAFile       string `yaml:"caFile"`
-		Insecure     bool   `yaml:"insecureSkipTLSVerify"`
-		Namespace    string `yaml:"namespace"`
-		SeaweedName  string `yaml:"seaweedName"`
-		Group        string `yaml:"group"`
+		APIServer   string `yaml:"apiserver"`
+		TokenFile   string `yaml:"tokenFile"`
+		CAFile      string `yaml:"caFile"`
+		Insecure    bool   `yaml:"insecureSkipTLSVerify"`
+		Namespace   string `yaml:"namespace"`
+		SeaweedName string `yaml:"seaweedName"`
+		Group       string `yaml:"group"`
+		// MasterService, when set, discovers masters directly from this
+		// Service's Endpoints — no Seaweed CRD/operator required. Use
+		// this against a plain Helm-chart deployment (no operator
+		// installed), which is how AppMana's own production SeaweedFS
+		// runs. Mutually exclusive with SeaweedName in practice, but
+		// MasterService wins if both are set.
+		MasterService string `yaml:"masterService"`
+		// MasterPort is the master's HTTP port used with MasterService
+		// (the CRD path instead reads this from the Seaweed CR).
+		// Defaults to 9333.
+		MasterPort int `yaml:"masterPort"`
 	} `yaml:"kube"`
 	Volume struct {
 		Dir        string `yaml:"dir"`
@@ -197,8 +208,11 @@ func validate(c *config) error {
 	if c.Kube.Namespace == "" {
 		return errors.New("kube.namespace is required")
 	}
-	if c.Kube.SeaweedName == "" {
-		return errors.New("kube.seaweedName is required")
+	if c.Kube.SeaweedName == "" && c.Kube.MasterService == "" {
+		return errors.New("kube.seaweedName or kube.masterService is required")
+	}
+	if c.Kube.MasterService != "" && c.Kube.MasterPort == 0 {
+		c.Kube.MasterPort = 9333
 	}
 	if c.Volume.Dir == "" {
 		return errors.New("volume.dir is required")
@@ -255,12 +269,29 @@ func buildRESTConfig(c *config) (*rest.Config, error) {
 // (pb.ServerToGrpcAddress). Passing the gRPC port here makes the
 // volume server dial http_port+20000 and fail to connect.
 //
-// It reads the master Service object exposed by the operator
-// (preferred over hard-coded DNS names because the operator's
-// service-name format may drift between releases). Falls back to the
-// CR's spec.master.replicas via the headless service if the master
-// Service does not yet exist.
+// Two discovery modes:
+//   - kube.masterService set: read that Service's Endpoints directly.
+//     No Seaweed CRD or operator required — this is what a plain
+//     Helm-chart SeaweedFS deployment (no operator installed) needs,
+//     which is how AppMana's own production cluster runs it.
+//   - kube.seaweedName set (masterService empty): the original
+//     operator-CRD path — reads the Seaweed CR for the master's HTTP
+//     port and replica count, preferring the master Service object
+//     (service-name format may drift between operator releases) and
+//     falling back to the CR's spec.master.replicas via the headless
+//     Service if the master Service does not yet exist.
 func discoverMasters(ctx context.Context, dyn dynamic.Interface, core kubernetes.Interface, c *config) (string, error) {
+	if c.Kube.MasterService != "" {
+		endpoints, err := masterEndpointsFromServiceName(ctx, core, c, c.Kube.MasterService, c.Kube.MasterPort)
+		if err != nil {
+			return "", fmt.Errorf("get master service %s/%s: %w", c.Kube.Namespace, c.Kube.MasterService, err)
+		}
+		if endpoints == "" {
+			return "", fmt.Errorf("master service %s/%s has no ready endpoints", c.Kube.Namespace, c.Kube.MasterService)
+		}
+		return endpoints, nil
+	}
+
 	cr, err := dyn.Resource(seaweedGVR(c)).Namespace(c.Kube.Namespace).Get(ctx, c.Kube.SeaweedName, metav1.GetOptions{})
 	if err != nil {
 		return "", fmt.Errorf("get Seaweed %s/%s: %w", c.Kube.Namespace, c.Kube.SeaweedName, err)
@@ -290,40 +321,56 @@ func masterEndpointsFromService(ctx context.Context, core kubernetes.Interface, 
 		c.Kube.SeaweedName + "-masters",
 	}
 	for _, name := range candidates {
-		svc, err := core.CoreV1().Services(c.Kube.Namespace).Get(ctx, name, metav1.GetOptions{})
+		addrs, err := masterEndpointsFromServiceName(ctx, core, c, name, port)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
 			}
 			return "", err
 		}
-		ep, err := core.CoreV1().Endpoints(c.Kube.Namespace).Get(ctx, name, metav1.GetOptions{})
-		if err != nil {
-			return "", err
-		}
-		httpPort := int32(port)
-		for _, p := range svc.Spec.Ports {
-			if p.Name == "master-http" || p.Name == "http" || p.Port == int32(port) {
-				httpPort = p.Port
-				break
-			}
-		}
-		var addrs []string
-		for _, ss := range ep.Subsets {
-			for _, a := range ss.Addresses {
-				host := a.IP
-				if a.Hostname != "" && svc.Spec.ClusterIP == corev1.ClusterIPNone {
-					host = fmt.Sprintf("%s.%s.%s.svc", a.Hostname, name, c.Kube.Namespace)
-				}
-				addrs = append(addrs, fmt.Sprintf("%s:%d", host, httpPort))
-			}
-		}
-		if len(addrs) > 0 {
-			sort.Strings(addrs)
-			return strings.Join(addrs, ","), nil
+		if addrs != "" {
+			return addrs, nil
 		}
 	}
 	return "", nil
+}
+
+// masterEndpointsFromServiceName resolves one specific Service's
+// Endpoints into a "host:port,host:port" list using that Service's
+// HTTP port (matched by name "master-http"/"http", falling back to the
+// given default port). Returns "" (no error) if the Service exists but
+// has no ready endpoints yet.
+func masterEndpointsFromServiceName(ctx context.Context, core kubernetes.Interface, c *config, name string, port int) (string, error) {
+	svc, err := core.CoreV1().Services(c.Kube.Namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+	ep, err := core.CoreV1().Endpoints(c.Kube.Namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+	httpPort := int32(port)
+	for _, p := range svc.Spec.Ports {
+		if p.Name == "master-http" || p.Name == "http" || p.Port == int32(port) {
+			httpPort = p.Port
+			break
+		}
+	}
+	var addrs []string
+	for _, ss := range ep.Subsets {
+		for _, a := range ss.Addresses {
+			host := a.IP
+			if a.Hostname != "" && svc.Spec.ClusterIP == corev1.ClusterIPNone {
+				host = fmt.Sprintf("%s.%s.%s.svc", a.Hostname, name, c.Kube.Namespace)
+			}
+			addrs = append(addrs, fmt.Sprintf("%s:%d", host, httpPort))
+		}
+	}
+	if len(addrs) == 0 {
+		return "", nil
+	}
+	sort.Strings(addrs)
+	return strings.Join(addrs, ","), nil
 }
 
 func masterReplicas(cr *unstructured.Unstructured) int64 {

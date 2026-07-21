@@ -15,7 +15,15 @@ kube:
   caFile: @PKGVAR@/kube/ca.crt
   insecureSkipTLSVerify: @INSECURE@
   namespace: @NAMESPACE@
+  # seaweedName expects a seaweedfs-operator Seaweed CR. If your cluster
+  # runs a plain Helm-chart SeaweedFS (no operator installed — this is
+  # how AppMana's own production cluster runs it), delete seaweedName
+  # and set kube.masterService to the master's Service name instead;
+  # discovery then reads that Service's Endpoints directly, no CRD
+  # needed. masterService wins if both are set.
   seaweedName: @SEAWEED_NAME@
+  # masterService: seaweedfs-master
+  # masterPort: 9333
 
 volume:
   dir: @SHARE_PATH@
