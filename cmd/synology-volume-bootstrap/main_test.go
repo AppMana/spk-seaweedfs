@@ -132,6 +132,104 @@ func TestValidate_Required(t *testing.T) {
 	}
 }
 
+func TestValidate_MasterServiceSatisfiesRequirement(t *testing.T) {
+	// kube.masterService alone (no kube.seaweedName) must validate —
+	// this is the CRD-free path for clusters with no seaweedfs-operator.
+	c := &config{}
+	c.Kube.APIServer = "https://api.example:6443"
+	c.Kube.TokenFile = "/etc/token"
+	c.Kube.Namespace = "seaweedfs"
+	c.Kube.MasterService = "seaweedfs-master"
+	c.Volume.Dir = "/d"
+	c.Volume.IP = "10.0.0.1"
+
+	if err := validate(c); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	if c.Kube.MasterPort != 9333 {
+		t.Errorf("MasterPort default = %d, want 9333", c.Kube.MasterPort)
+	}
+}
+
+func TestValidate_NeitherSeaweedNameNorMasterService(t *testing.T) {
+	c := &config{}
+	c.Kube.APIServer = "https://api.example:6443"
+	c.Kube.TokenFile = "/etc/token"
+	c.Kube.Namespace = "seaweedfs"
+	c.Volume.Dir = "/d"
+	c.Volume.IP = "10.0.0.1"
+
+	err := validate(c)
+	if err == nil || !strings.Contains(err.Error(), "kube.masterService") {
+		t.Fatalf("expected error mentioning kube.masterService, got %v", err)
+	}
+}
+
+func TestDiscoverMasters_FromMasterServiceNoCRD(t *testing.T) {
+	// No Seaweed CR exists anywhere in this fake client — proves the
+	// masterService path never touches the dynamic/CRD client, which is
+	// the point: production runs a plain Helm-chart SeaweedFS with no
+	// seaweedfs-operator installed at all.
+	scheme := runtime.NewScheme()
+	dyn := dynfake.NewSimpleDynamicClient(scheme) // deliberately empty
+
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "seaweedfs-master", Namespace: "seaweedfs"},
+		Spec: corev1.ServiceSpec{
+			ClusterIP: "10.152.184.50",
+			Ports: []corev1.ServicePort{
+				{Name: "master-http", Port: 9333},
+				{Name: "master-grpc", Port: 19333},
+			},
+		},
+	}
+	ep := &corev1.Endpoints{
+		ObjectMeta: metav1.ObjectMeta{Name: "seaweedfs-master", Namespace: "seaweedfs"},
+		Subsets: []corev1.EndpointSubset{
+			{Addresses: []corev1.EndpointAddress{
+				{IP: "10.3.0.7"},
+				{IP: "10.3.0.8"},
+				{IP: "10.3.0.9"},
+			}},
+		},
+	}
+	core := corefake.NewSimpleClientset(svc, ep)
+
+	c := &config{}
+	c.Kube.Namespace = "seaweedfs"
+	c.Kube.MasterService = "seaweedfs-master"
+	c.Kube.MasterPort = 9333
+
+	got, err := discoverMasters(context.Background(), dyn, core, c)
+	if err != nil {
+		t.Fatalf("discoverMasters: %v", err)
+	}
+	for _, want := range []string{"10.3.0.7:9333", "10.3.0.8:9333", "10.3.0.9:9333"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("expected %q in result, got: %s", want, got)
+		}
+	}
+	if strings.Contains(got, "19333") {
+		t.Errorf("must use the HTTP port, not gRPC: %s", got)
+	}
+}
+
+func TestDiscoverMasters_MasterServiceMissingEndpoints(t *testing.T) {
+	scheme := runtime.NewScheme()
+	dyn := dynfake.NewSimpleDynamicClient(scheme)
+	core := corefake.NewSimpleClientset() // no Service at all
+
+	c := &config{}
+	c.Kube.Namespace = "seaweedfs"
+	c.Kube.MasterService = "seaweedfs-master"
+	c.Kube.MasterPort = 9333
+
+	_, err := discoverMasters(context.Background(), dyn, core, c)
+	if err == nil {
+		t.Fatal("expected an error when the master service does not exist")
+	}
+}
+
 func TestDiscoverMasters_FromHeadlessFallback(t *testing.T) {
 	cr := makeSeaweedCR("appmana", "seaweedfs", 3)
 	scheme := runtime.NewScheme()
