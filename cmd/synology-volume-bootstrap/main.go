@@ -28,7 +28,6 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -340,6 +339,16 @@ func masterEndpointsFromService(ctx context.Context, core kubernetes.Interface, 
 // HTTP port (matched by name "master-http"/"http", falling back to the
 // given default port). Returns "" (no error) if the Service exists but
 // has no ready endpoints yet.
+//
+// Always uses the Endpoints' pod IPs, never a cluster-internal *.svc
+// DNS name — even though a headless Service's Endpoints often carry a
+// per-pod Hostname (e.g. StatefulSet pods with a matching subdomain),
+// that name only resolves via in-cluster coredns. This bootstrap's
+// caller is always an external LAN client (the Synology), for which
+// only the routable pod IP works. (Confirmed against the real
+// production cluster 2026-07-21: pod IPs are BGP-routed to the LAN
+// with no extra plumbing, but *.svc names are not resolvable at all
+// from outside the cluster — "no such host".)
 func masterEndpointsFromServiceName(ctx context.Context, core kubernetes.Interface, c *config, name string, port int) (string, error) {
 	svc, err := core.CoreV1().Services(c.Kube.Namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
@@ -359,11 +368,7 @@ func masterEndpointsFromServiceName(ctx context.Context, core kubernetes.Interfa
 	var addrs []string
 	for _, ss := range ep.Subsets {
 		for _, a := range ss.Addresses {
-			host := a.IP
-			if a.Hostname != "" && svc.Spec.ClusterIP == corev1.ClusterIPNone {
-				host = fmt.Sprintf("%s.%s.%s.svc", a.Hostname, name, c.Kube.Namespace)
-			}
-			addrs = append(addrs, fmt.Sprintf("%s:%d", host, httpPort))
+			addrs = append(addrs, fmt.Sprintf("%s:%d", a.IP, httpPort))
 		}
 	}
 	if len(addrs) == 0 {

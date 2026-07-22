@@ -214,6 +214,53 @@ func TestDiscoverMasters_FromMasterServiceNoCRD(t *testing.T) {
 	}
 }
 
+func TestDiscoverMasters_HeadlessServiceUsesIPNotDNSName(t *testing.T) {
+	// Regression test: a headless master Service (ClusterIP: None) whose
+	// Endpoints carry a per-pod Hostname (as StatefulSet pods with a
+	// matching subdomain do — exactly what production's chart-deployed
+	// master StatefulSet does) must still resolve to the routable pod
+	// IP, never a "<hostname>.<service>.<namespace>.svc" name. That name
+	// only resolves via in-cluster coredns; this bootstrap's caller is
+	// always an external LAN client (the Synology), which got "no such
+	// host" against the real production cluster before this fix
+	// (2026-07-21).
+	scheme := runtime.NewScheme()
+	dyn := dynfake.NewSimpleDynamicClient(scheme)
+
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "seaweedfs-master", Namespace: "seaweedfs-synology-poc"},
+		Spec: corev1.ServiceSpec{
+			ClusterIP: corev1.ClusterIPNone,
+			Ports:     []corev1.ServicePort{{Name: "master-http", Port: 9333}},
+		},
+	}
+	ep := &corev1.Endpoints{
+		ObjectMeta: metav1.ObjectMeta{Name: "seaweedfs-master", Namespace: "seaweedfs-synology-poc"},
+		Subsets: []corev1.EndpointSubset{
+			{Addresses: []corev1.EndpointAddress{
+				{IP: "10.3.204.83", Hostname: "seaweedfs-master-0"},
+			}},
+		},
+	}
+	core := corefake.NewSimpleClientset(svc, ep)
+
+	c := &config{}
+	c.Kube.Namespace = "seaweedfs-synology-poc"
+	c.Kube.MasterService = "seaweedfs-master"
+	c.Kube.MasterPort = 9333
+
+	got, err := discoverMasters(context.Background(), dyn, core, c)
+	if err != nil {
+		t.Fatalf("discoverMasters: %v", err)
+	}
+	if got != "10.3.204.83:9333" {
+		t.Errorf("expected the raw pod IP, got: %s", got)
+	}
+	if strings.Contains(got, ".svc") {
+		t.Errorf("must never contain a cluster-internal DNS name: %s", got)
+	}
+}
+
 func TestDiscoverMasters_MasterServiceMissingEndpoints(t *testing.T) {
 	scheme := runtime.NewScheme()
 	dyn := dynfake.NewSimpleDynamicClient(scheme)
