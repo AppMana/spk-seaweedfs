@@ -70,6 +70,14 @@ type config struct {
 		DiskType   string `yaml:"diskType"`
 		Index      string `yaml:"index"`
 		ExtraFlags []string `yaml:"extraFlags"`
+		// Instances runs N `weed volume` processes (default 1), all in
+		// the same rack. SeaweedFS's volume growth requires every rack
+		// participating in a replication policy with a same-rack copy
+		// count (e.g. production's "011") to have >= sameRackCount+1
+		// data nodes — a single-process NAS can never be selected under
+		// such policies (weed/topology/volume_growth.go). Instance i
+		// serves port+i / grpcPort+i from <dir>/v<i>.
+		Instances int `yaml:"instances"`
 	} `yaml:"volume"`
 	MTLS struct {
 		SecretName string `yaml:"secretName"`
@@ -153,23 +161,26 @@ func main() {
 		fatal("mtls material: %v", err)
 	}
 
-	args := renderArgs(cfg, masters, tlsArgs)
-
 	if *printOnly {
 		if weedBin != "" {
 			fmt.Fprintf(os.Stderr, "weed binary: %s\n", weedBin)
 		}
-		for _, a := range args {
-			fmt.Println(a)
+		for i := 0; i < cfg.Volume.Instances; i++ {
+			if cfg.Volume.Instances > 1 {
+				fmt.Printf("# instance %d\n", i)
+			}
+			for _, a := range renderArgs(instanceConfig(cfg, i), masters, tlsArgs) {
+				fmt.Println(a)
+			}
 		}
 		return
 	}
 	if *outPath == "" {
 		fatal("missing --out (or $BOOTSTRAP_OUT)")
 	}
-	if err := writeArgv(*outPath, args); err != nil {
-		fatal("write argv: %v", err)
-	}
+	// weed_bin is written before any argv file: run.sh instances > 0
+	// wait for their argv file to appear and then read weed_bin, so
+	// argv appearing must imply weed_bin is already in place.
 	if *weedBinOut != "" {
 		// Written even when empty so a weed.image removal reverts the
 		// service to the packaged binary on the next restart.
@@ -179,7 +190,39 @@ func main() {
 	} else if weedBin != "" {
 		fatal("weed.image set but --weed-bin-out (or $BOOTSTRAP_WEED_BIN_OUT) missing")
 	}
-	fmt.Fprintf(os.Stderr, "wrote %d argv lines to %s\n", len(args), *outPath)
+	for i := 0; i < cfg.Volume.Instances; i++ {
+		icfg := instanceConfig(cfg, i)
+		if err := os.MkdirAll(icfg.Volume.Dir, 0o755); err != nil {
+			fatal("create volume dir for instance %d: %v", i, err)
+		}
+		path := *outPath
+		if i > 0 {
+			path = fmt.Sprintf("%s.%d", *outPath, i)
+		}
+		if err := writeArgv(path, renderArgs(icfg, masters, tlsArgs)); err != nil {
+			fatal("write argv for instance %d: %v", i, err)
+		}
+	}
+	fmt.Fprintf(os.Stderr, "wrote argv for %d instance(s) to %s\n", cfg.Volume.Instances, *outPath)
+}
+
+// instanceConfig returns a copy of c adjusted for volume-server
+// instance i: with instances > 1, instance i serves port+i / grpcPort+i
+// from <dir>/v<i>, and publicUrl is re-derived from ip and the
+// instance's port (an explicitly configured publicUrl would otherwise
+// wrongly point every instance at instance 0's port). A single-instance
+// config is returned unchanged, preserving the existing on-disk layout
+// of deployments made before instances existed.
+func instanceConfig(c *config, i int) *config {
+	if c.Volume.Instances <= 1 {
+		return c
+	}
+	ic := *c
+	ic.Volume.Dir = filepath.Join(c.Volume.Dir, fmt.Sprintf("v%d", i))
+	ic.Volume.Port = c.Volume.Port + i
+	ic.Volume.GRPCPort = c.Volume.GRPCPort + i
+	ic.Volume.PublicURL = fmt.Sprintf("%s:%d", c.Volume.IP, ic.Volume.Port)
+	return &ic
 }
 
 func loadConfig(path string) (*config, error) {
@@ -240,6 +283,12 @@ func validate(c *config) error {
 	}
 	if c.Volume.Max == 0 {
 		c.Volume.Max = 1000
+	}
+	if c.Volume.Instances == 0 {
+		c.Volume.Instances = 1
+	}
+	if c.Volume.Instances < 1 || c.Volume.Instances > 8 {
+		return fmt.Errorf("volume.instances must be 1..8, got %d", c.Volume.Instances)
 	}
 	return nil
 }
