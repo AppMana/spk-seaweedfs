@@ -10,14 +10,30 @@ LOG_FILE="${SYNOPKG_PKGVAR}/log/weed.log"
 SVC_BACKGROUND=y
 SVC_WRITE_PID=y
 
-# start-stop-status reads SERVICE_COMMAND with `read -r` and then runs
-# it UNQUOTED (`${service} >> "${OUT}" 2>&1 &`), so it is subject to
-# word-splitting with no quote removal — any quotes/semicolons/redirects
-# embedded in the value are corrupted before a shell ever parses them.
-# SERVICE_COMMAND must therefore be a single bare path with no shell
-# metacharacters; the actual logic (bootstrap + exec weed) lives in
-# run.sh, which does its own quoting once it's actually executing.
-SERVICE_COMMAND="${SYNOPKG_PKGDEST}/bin/run.sh"
+# start-stop-status reads SERVICE_COMMAND with `read -r` PER LINE and
+# runs each line UNQUOTED (`${service} >> "${OUT}" 2>&1 &`), appending
+# each background PID to the PID file — so a multi-line value runs one
+# daemon per line, and every line must stay free of shell
+# metacharacters. One line (= one `weed volume` process) per instance
+# from volume.yaml's volume.instances (default 1); the actual logic
+# lives in run.sh, which does its own quoting once it's executing.
+INSTANCES=$(sed -n 's/^[[:space:]]*instances:[[:space:]]*//p' "${VOLUME_YAML}" 2>/dev/null | head -1)
+case "${INSTANCES}" in
+    ''|*[!0-9]*) INSTANCES=1 ;;
+esac
+SERVICE_COMMAND="${SYNOPKG_PKGDEST}/bin/run.sh 0"
+i=1
+while [ "$i" -lt "${INSTANCES}" ]; do
+    SERVICE_COMMAND="${SERVICE_COMMAND}
+${SYNOPKG_PKGDEST}/bin/run.sh $i"
+    i=$((i + 1))
+done
+
+service_prestart() {
+    # Remove stale argv files so instances > 0 wait for THIS start's
+    # bootstrap render instead of exec-ing against old master addresses.
+    rm -f "${RUN_DIR}/argv" "${RUN_DIR}"/argv.*
+}
 
 service_postinst() {
     install -d -m 700 -o "${SC_USER:-sc-${SYNOPKG_PKGNAME}}" "${KUBE_DIR}" "${TLS_DIR}" "${RUN_DIR}" "${OCI_DIR}"

@@ -37,6 +37,13 @@ volume:
   diskType: @DISK_TYPE@
   index: ""
   extraFlags: []
+  # Number of weed volume processes (all in this rack). Replication
+  # policies with a same-rack copy count (e.g. "011") require >=2
+  # processes for this NAS's rack to be eligible for volume growth at
+  # all. Instance i serves port+i / grpcPort+i from <dir>/v<i>; with
+  # instances > 1, publicUrl is derived per instance and the value
+  # above is ignored. max applies PER INSTANCE.
+  instances: 1
 
 mtls:
   secretName: @MTLS_SECRET@

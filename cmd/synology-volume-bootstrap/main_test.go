@@ -132,6 +132,75 @@ func TestValidate_Required(t *testing.T) {
 	}
 }
 
+func TestInstanceConfig_Offsets(t *testing.T) {
+	c := &config{}
+	c.Volume.Dir = "/volume1/seaweed"
+	c.Volume.IP = "10.2.0.73"
+	c.Volume.Port = 8080
+	c.Volume.GRPCPort = 18080
+	c.Volume.PublicURL = "10.2.0.73:8080"
+	c.Volume.Instances = 2
+
+	i0 := instanceConfig(c, 0)
+	if i0.Volume.Dir != "/volume1/seaweed/v0" || i0.Volume.Port != 8080 || i0.Volume.GRPCPort != 18080 {
+		t.Errorf("instance 0: dir=%s port=%d grpc=%d", i0.Volume.Dir, i0.Volume.Port, i0.Volume.GRPCPort)
+	}
+	i1 := instanceConfig(c, 1)
+	if i1.Volume.Dir != "/volume1/seaweed/v1" || i1.Volume.Port != 8081 || i1.Volume.GRPCPort != 18081 {
+		t.Errorf("instance 1: dir=%s port=%d grpc=%d", i1.Volume.Dir, i1.Volume.Port, i1.Volume.GRPCPort)
+	}
+	if i1.Volume.PublicURL != "10.2.0.73:8081" {
+		t.Errorf("instance 1 publicUrl must be re-derived for its own port, got %s", i1.Volume.PublicURL)
+	}
+	if c.Volume.Dir != "/volume1/seaweed" || c.Volume.Port != 8080 {
+		t.Errorf("original config must not be mutated")
+	}
+}
+
+func TestInstanceConfig_SingleInstanceUnchanged(t *testing.T) {
+	// Pre-instances deployments store data directly in volume.dir; a
+	// single-instance config must keep that exact layout (no /v0).
+	c := &config{}
+	c.Volume.Dir = "/volume1/seaweed-poc"
+	c.Volume.IP = "10.2.0.73"
+	c.Volume.Port = 8080
+	c.Volume.PublicURL = "custom.host:9999"
+	c.Volume.Instances = 1
+
+	got := instanceConfig(c, 0)
+	if got != c {
+		t.Errorf("single-instance must return the config unchanged")
+	}
+	if got.Volume.Dir != "/volume1/seaweed-poc" || got.Volume.PublicURL != "custom.host:9999" {
+		t.Errorf("layout/publicUrl must be preserved: %+v", got.Volume)
+	}
+}
+
+func TestValidate_InstancesDefaultAndBounds(t *testing.T) {
+	base := func() *config {
+		c := &config{}
+		c.Kube.APIServer = "https://api:6443"
+		c.Kube.TokenFile = "/t"
+		c.Kube.Namespace = "ns"
+		c.Kube.MasterService = "seaweedfs-master"
+		c.Volume.Dir = "/d"
+		c.Volume.IP = "10.0.0.1"
+		return c
+	}
+	c := base()
+	if err := validate(c); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	if c.Volume.Instances != 1 {
+		t.Errorf("Instances default = %d, want 1", c.Volume.Instances)
+	}
+	c = base()
+	c.Volume.Instances = 9
+	if err := validate(c); err == nil {
+		t.Error("expected error for instances=9")
+	}
+}
+
 func TestValidate_MasterServiceSatisfiesRequirement(t *testing.T) {
 	// kube.masterService alone (no kube.seaweedName) must validate —
 	// this is the CRD-free path for clusters with no seaweedfs-operator.
