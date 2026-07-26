@@ -20,10 +20,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -57,6 +59,18 @@ type config struct {
 		// (the CRD path instead reads this from the Seaweed CR).
 		// Defaults to 9333.
 		MasterPort int `yaml:"masterPort"`
+		// MasterAddressMode selects what -mserver is given for the
+		// MasterService path:
+		//   "dns"       (default) the Service's DNS name, resolved by
+		//               weed at connect time. Survives master restarts:
+		//               a headless Service's DNS always returns the
+		//               CURRENT master pod IPs.
+		//   "endpoints" a snapshot of the Endpoints' pod IPs, baked in
+		//               at bootstrap time. Only for clients that cannot
+		//               resolve cluster DNS — the addresses go stale as
+		//               soon as any master pod is rescheduled, stranding
+		//               the volume server until the package restarts.
+		MasterAddressMode string `yaml:"masterAddressMode"`
 	} `yaml:"kube"`
 	Volume struct {
 		Dir        string `yaml:"dir"`
@@ -330,6 +344,8 @@ func buildRESTConfig(c *config) (*rest.Config, error) {
 //     Service if the master Service does not yet exist.
 func discoverMasters(ctx context.Context, dyn dynamic.Interface, core kubernetes.Interface, c *config) (string, error) {
 	if c.Kube.MasterService != "" {
+		// Always resolve Endpoints first: it validates the Service
+		// exists, has ready masters, and yields the real HTTP port.
 		endpoints, err := masterEndpointsFromServiceName(ctx, core, c, c.Kube.MasterService, c.Kube.MasterPort)
 		if err != nil {
 			return "", fmt.Errorf("get master service %s/%s: %w", c.Kube.Namespace, c.Kube.MasterService, err)
@@ -337,7 +353,22 @@ func discoverMasters(ctx context.Context, dyn dynamic.Interface, core kubernetes
 		if endpoints == "" {
 			return "", fmt.Errorf("master service %s/%s has no ready endpoints", c.Kube.Namespace, c.Kube.MasterService)
 		}
-		return endpoints, nil
+		if c.Kube.MasterAddressMode == "endpoints" {
+			return endpoints, nil
+		}
+		// Default: hand weed the Service DNS name so it re-resolves at
+		// connect time. Endpoint IPs are a point-in-time snapshot and
+		// go stale the moment a master pod is rescheduled — observed
+		// 2026-07-26, where a master rolling update changed all three
+		// pod IPs and stranded the Synology volume server until its
+		// package was restarted.
+		port := c.Kube.MasterPort
+		if _, p, err := net.SplitHostPort(strings.Split(endpoints, ",")[0]); err == nil {
+			if n, err := strconv.Atoi(p); err == nil {
+				port = n
+			}
+		}
+		return fmt.Sprintf("%s.%s:%d", c.Kube.MasterService, c.Kube.Namespace, port), nil
 	}
 
 	cr, err := dyn.Resource(seaweedGVR(c)).Namespace(c.Kube.Namespace).Get(ctx, c.Kube.SeaweedName, metav1.GetOptions{})

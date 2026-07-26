@@ -273,10 +273,12 @@ func TestDiscoverMasters_FromMasterServiceNoCRD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("discoverMasters: %v", err)
 	}
-	for _, want := range []string{"10.3.0.7:9333", "10.3.0.8:9333", "10.3.0.9:9333"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("expected %q in result, got: %s", want, got)
-		}
+	// The point of this test is that the masterService path never touches
+	// the dynamic/CRD client (the fake above is deliberately empty, so
+	// any CR lookup would error). Address form itself is covered by
+	// TestDiscoverMasters_DefaultsToServiceDNSNotPodIPs.
+	if got != "seaweedfs-master.seaweedfs:9333" {
+		t.Errorf("expected the Service DNS name, got: %s", got)
 	}
 	if strings.Contains(got, "19333") {
 		t.Errorf("must use the HTTP port, not gRPC: %s", got)
@@ -317,6 +319,12 @@ func TestDiscoverMasters_HeadlessServiceUsesIPNotDNSName(t *testing.T) {
 	c.Kube.Namespace = "seaweedfs-synology-poc"
 	c.Kube.MasterService = "seaweedfs-master"
 	c.Kube.MasterPort = 9333
+	// Scoped to endpoints mode: the default is now the Service DNS name
+	// (see TestDiscoverMasters_DefaultsToServiceDNSNotPodIPs). What this
+	// test guards is that endpoints mode emits raw pod IPs and never a
+	// PER-POD `<hostname>.<service>.<namespace>.svc` name, which only
+	// resolves via in-cluster coredns.
+	c.Kube.MasterAddressMode = "endpoints"
 
 	got, err := discoverMasters(context.Background(), dyn, core, c)
 	if err != nil {
@@ -326,7 +334,60 @@ func TestDiscoverMasters_HeadlessServiceUsesIPNotDNSName(t *testing.T) {
 		t.Errorf("expected the raw pod IP, got: %s", got)
 	}
 	if strings.Contains(got, ".svc") {
-		t.Errorf("must never contain a cluster-internal DNS name: %s", got)
+		t.Errorf("must never contain a per-pod cluster DNS name: %s", got)
+	}
+}
+
+func TestDiscoverMasters_DefaultsToServiceDNSNotPodIPs(t *testing.T) {
+	// Regression test: baking Endpoint pod IPs into -mserver strands the
+	// volume server as soon as masters are rescheduled. Observed live
+	// 2026-07-26 — a master rolling update changed all three pod IPs and
+	// the NAS heartbeat kept dialing the dead ones until its package was
+	// restarted. Default must be the Service DNS name, which weed
+	// re-resolves at connect time.
+	scheme := runtime.NewScheme()
+	dyn := dynfake.NewSimpleDynamicClient(scheme)
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "seaweedfs-master", Namespace: "seaweedfs"},
+		Spec: corev1.ServiceSpec{
+			ClusterIP: corev1.ClusterIPNone,
+			Ports:     []corev1.ServicePort{{Name: "master-http", Port: 9333}},
+		},
+	}
+	ep := &corev1.Endpoints{
+		ObjectMeta: metav1.ObjectMeta{Name: "seaweedfs-master", Namespace: "seaweedfs"},
+		Subsets: []corev1.EndpointSubset{
+			{Addresses: []corev1.EndpointAddress{{IP: "10.3.106.5"}, {IP: "10.3.214.213"}}},
+		},
+	}
+	core := corefake.NewSimpleClientset(svc, ep)
+
+	c := &config{}
+	c.Kube.Namespace = "seaweedfs"
+	c.Kube.MasterService = "seaweedfs-master"
+	c.Kube.MasterPort = 9333
+
+	got, err := discoverMasters(context.Background(), dyn, core, c)
+	if err != nil {
+		t.Fatalf("discoverMasters: %v", err)
+	}
+	if got != "seaweedfs-master.seaweedfs:9333" {
+		t.Errorf("default mode must yield the Service DNS name, got %q", got)
+	}
+	for _, ip := range []string{"10.3.106.5", "10.3.214.213"} {
+		if strings.Contains(got, ip) {
+			t.Errorf("must not bake in ephemeral pod IP %s: %s", ip, got)
+		}
+	}
+
+	// Explicit opt-out still returns the pinned Endpoint IPs.
+	c.Kube.MasterAddressMode = "endpoints"
+	got, err = discoverMasters(context.Background(), dyn, core, c)
+	if err != nil {
+		t.Fatalf("discoverMasters(endpoints): %v", err)
+	}
+	if !strings.Contains(got, "10.3.106.5:9333") {
+		t.Errorf("endpoints mode should return pod IPs, got %q", got)
 	}
 }
 
