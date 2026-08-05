@@ -1,6 +1,6 @@
 SPK_NAME = seaweedfs
-SPK_VERS = 4.23
-SPK_REV = 1
+SPK_VERS = 4.40
+SPK_REV = 2
 SPK_ICON = src/seaweedfs.png
 
 DEPENDS = cross/seaweedfs
@@ -13,7 +13,7 @@ DISPLAY_NAME = SeaweedFS Volume
 DESCRIPTION = "SeaweedFS volume server that joins an existing seaweedfs-operator-managed cluster. Reads cluster topology from the Kubernetes API via a service-account token, then runs the upstream `weed volume` daemon advertised on the LAN."
 HOMEPAGE = https://github.com/seaweedfs/seaweedfs
 LICENSE = Apache-2.0
-CHANGELOG = "Initial release. Tracks SeaweedFS 4.23. Volume role only; no filer or S3 gateway."
+CHANGELOG = "Tracks SeaweedFS 4.40 (AppMana fork). Raises the service nofile limit above DSM's 1024 default and supervises the daemon so a crash restarts instead of silently leaving the cluster under-replicated."
 
 WIZARDS_DIR = src/wizard
 

@@ -88,8 +88,16 @@ func materializeWeed(ctx context.Context, c *config) (string, error) {
 			if err := setCurrent(cacheDir, entryDir); err != nil {
 				return "", err
 			}
+			// Say so. A pinned digest short-circuits before the registry is
+			// ever contacted, so editing weed.image WITHOUT also updating
+			// weed.digest silently keeps running the old binary -- the
+			// upgrade appears to succeed, the package restarts cleanly, and
+			// nothing anywhere reports the mismatch. Cost an hour on
+			// 2026-08-05 upgrading this host 4.23 -> 4.40.
+			fmt.Fprintf(os.Stderr, "synology-volume-bootstrap: using cached digest %s for image %s (pinned by weed.digest; registry not contacted)\n", pinned, c.Weed.Image)
 			return p, nil
 		}
+		fmt.Fprintf(os.Stderr, "synology-volume-bootstrap: weed.digest %s not in cache; resolving %s from the registry\n", pinned, c.Weed.Image)
 	}
 
 	img, err := remote.Image(ref, remoteOpts...)
@@ -106,6 +114,7 @@ func materializeWeed(ctx context.Context, c *config) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	fmt.Fprintf(os.Stderr, "synology-volume-bootstrap: resolved %s -> %s\n", c.Weed.Image, digest)
 	if c.Weed.Digest != "" && digest.String() != c.Weed.Digest {
 		return "", fmt.Errorf("weed.image resolved to %s, expected weed.digest %s", digest, c.Weed.Digest)
 	}
