@@ -51,9 +51,55 @@ if [ -s "${WEED_BIN_FILE}" ]; then
   [ -n "$W" ] && RUN_WEED="$W"
 fi
 
+# DSM starts services with the default 1024-descriptor limit, which a volume
+# server cannot live within: it holds .dat + .idx + .ldb open per volume, so a
+# few hundred volumes exhausts it before counting sockets. On 2026-08-05 this
+# host was serving ~270 volumes when a replication pass added concurrent
+# VolumeCopy streams; it hit "socket: too many open files", os.OpenFile then
+# returned a nil *os.File, and NewDiskFile dereferenced it -- SIGSEGV, whole
+# process dead, 359 volumes left under-replicated until someone looked.
+#
+# Raise to a hard-limit-capped 65536. Logged so the achieved value is visible
+# in weed.log rather than inferred: the failure mode is silent until it is not.
+FD_WANT=65536
+FD_HARD=$(ulimit -Hn 2>/dev/null || echo "$FD_WANT")
+[ "$FD_HARD" = "unlimited" ] && FD_HARD=$FD_WANT
+[ "$FD_WANT" -gt "$FD_HARD" ] 2>/dev/null && FD_WANT=$FD_HARD
+ulimit -n "$FD_WANT" 2>/dev/null || echo "WARN: could not raise nofile to ${FD_WANT}" >>"${LOG_FILE}"
+echo "$(date -Is) run.sh[${IDX}]: nofile soft=$(ulimit -Sn) hard=$(ulimit -Hn) weed=${RUN_WEED}" >>"${LOG_FILE}"
+
 set --
 while IFS= read -r line; do
   [ -n "$line" ] && set -- "$@" "$line"
 done <"${ARGV_FILE}"
 
-exec "${RUN_WEED}" volume "$@" >>"${LOG_FILE}" 2>&1
+# Supervise rather than exec. DSM's start-stop-status launches this with
+# SVC_BACKGROUND=y and then forgets about it -- nothing watches for the process
+# dying, so the 2026-08-05 segfault left the volume server down until a human
+# noticed 359 under-replicated volumes. Restart it here.
+#
+# Backoff is capped and the restart is logged with the exit status, so a
+# crash-loop is visible in weed.log instead of looking like a healthy service
+# that merely restarts a lot. A clean exit (status 0) is treated as an
+# intentional stop and is NOT restarted, so `synopkg stop` still works.
+CHILD=""
+trap 'if [ -n "$CHILD" ]; then kill "$CHILD" 2>/dev/null; fi; exit 0' TERM INT
+
+BACKOFF=1
+while :; do
+  "${RUN_WEED}" volume "$@" >>"${LOG_FILE}" 2>&1 &
+  CHILD=$!
+  wait "$CHILD"
+  STATUS=$?
+  CHILD=""
+
+  if [ "$STATUS" = "0" ]; then
+    echo "$(date -Is) run.sh[${IDX}]: weed exited cleanly; not restarting" >>"${LOG_FILE}"
+    exit 0
+  fi
+
+  echo "$(date -Is) run.sh[${IDX}]: weed died with status ${STATUS}; restarting in ${BACKOFF}s" >>"${LOG_FILE}"
+  sleep "$BACKOFF"
+  BACKOFF=$((BACKOFF * 2))
+  [ "$BACKOFF" -gt 60 ] && BACKOFF=60
+done
