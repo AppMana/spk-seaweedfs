@@ -105,4 +105,17 @@ ssh admin@nas sudo synopkg restart seaweedfs
 ssh admin@nas sudo grep -E 'rendered|Forbidden|wrote' /var/packages/seaweedfs/var/log/weed.log | tail -5
 ```
 
+## 8. Supervisor restart contract
+
+Run the process-level supervisor test before packaging:
+
+```bash
+make test-supervisor
+```
+
+The test launches a fake `weed` that exits 137 once and then exits cleanly. It
+requires `run.sh` to log the failure, restart the child, and remain compatible
+with `set -e`. A direct `wait "$CHILD"` is incorrect because exit 137 would
+terminate the shell before its restart branch executes.
+
 A successful re-render confirms the bootstrap re-auth'd against the new token.
