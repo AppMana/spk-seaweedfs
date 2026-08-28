@@ -89,8 +89,11 @@ BACKOFF=1
 while :; do
   "${RUN_WEED}" volume "$@" >>"${LOG_FILE}" 2>&1 &
   CHILD=$!
-  wait "$CHILD"
-  STATUS=$?
+  if wait "$CHILD"; then
+    STATUS=0
+  else
+    STATUS=$?
+  fi
   CHILD=""
 
   if [ "$STATUS" = "0" ]; then

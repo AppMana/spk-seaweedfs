@@ -21,7 +21,7 @@ BOOTSTRAP_SRC   := $(shell find $(REPO_ROOT)/cmd/synology-volume-bootstrap -name
 STAGE_TARGETS   := $(SPKSRC_DIR)/cross/seaweedfs \
                    $(SPKSRC_DIR)/diyspk/seaweedfs
 
-.PHONY: all spk stage clean-stage bootstrap test-bootstrap
+.PHONY: all spk stage clean-stage bootstrap test test-bootstrap test-supervisor
 
 all: spk
 
@@ -38,6 +38,11 @@ $(BOOTSTRAP_BIN): $(BOOTSTRAP_SRC)
 
 test-bootstrap:
 	cd $(REPO_ROOT)/cmd/synology-volume-bootstrap && $(GO) test ./...
+
+test-supervisor:
+	sh $(REPO_ROOT)/tests/run-supervisor.sh
+
+test: test-bootstrap test-supervisor
 
 # Stage our authoritative source into the spksrc submodule.
 # Use rsync --delete so removing files locally also removes them from
