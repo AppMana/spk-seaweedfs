@@ -57,7 +57,10 @@ Single source of truth is `/var/packages/seaweedfs/var/volume.yaml`. The DSM wiz
 
 ## Sourcing `weed` from an OCI image
 
-By default the SPK runs the `weed` bundled at build time. Setting `weed.image`
+By default the SPK runs the large-disk `weed` bundled at build time. Release
+4.40-3 pins AppMana SeaweedFS 4.40 post.2 and its AppMana go-fuse sibling by
+commit and verifies both source archives during the build. `make test` checks
+that these pins cannot drift away from the package version. Setting `weed.image`
 in `volume.yaml` (or the wizard field) makes the bootstrap pull that OCI image
 at package start, extract the configured `weed.binaries` (default
 `/usr/bin/weed`), cache them by manifest digest under `weed.cacheDir`

@@ -10,7 +10,7 @@ UNSUPPORTED_ARCHS = $(PPC_ARCHS) $(ARMv5_ARCHS) $(ARMv7_ARCHS) $(ARMv7L_ARCHS) $
 
 MAINTAINER = appmana
 DISPLAY_NAME = SeaweedFS Volume
-DESCRIPTION = "SeaweedFS volume server that joins an existing seaweedfs-operator-managed cluster. Reads cluster topology from the Kubernetes API via a service-account token, then runs the upstream `weed volume` daemon advertised on the LAN."
+DESCRIPTION = SeaweedFS volume server that joins an existing seaweedfs-operator-managed cluster. Reads cluster topology from the Kubernetes API via a service-account token, then runs the upstream weed volume daemon advertised on the LAN.
 HOMEPAGE = https://github.com/seaweedfs/seaweedfs
 LICENSE = Apache-2.0
 CHANGELOG = "Tracks SeaweedFS 4.40 (AppMana fork). Preserves daemon supervision across nonzero child exits, including OOM exit 137, and verifies restart behavior in CI."
