@@ -44,13 +44,13 @@ test-supervisor:
 
 test: test-bootstrap test-supervisor
 
-# Stage our authoritative source into the spksrc submodule.
-# Use rsync --delete so removing files locally also removes them from
-# the staged copy. The staged paths are git-ignored under spksrc/.
+# Stage our authoritative source into the spksrc submodule. Recreate each
+# destination so deleted source files cannot linger in the package context.
 stage: bootstrap
-	@for d in $(STAGE_TARGETS); do mkdir -p $$d; done
-	rsync -a --delete $(REPO_ROOT)/cross/seaweedfs/ $(SPKSRC_DIR)/cross/seaweedfs/
-	rsync -a --delete $(REPO_ROOT)/diyspk/seaweedfs/ $(SPKSRC_DIR)/diyspk/seaweedfs/
+	rm -rf $(STAGE_TARGETS)
+	mkdir -p $(SPKSRC_DIR)/cross $(SPKSRC_DIR)/diyspk
+	cp -a $(REPO_ROOT)/cross/seaweedfs $(SPKSRC_DIR)/cross/seaweedfs
+	cp -a $(REPO_ROOT)/diyspk/seaweedfs $(SPKSRC_DIR)/diyspk/seaweedfs
 
 # Build the SPK. Delegates to spksrc's per-arch target.
 spk: stage
