@@ -21,7 +21,7 @@ BOOTSTRAP_SRC   := $(shell find $(REPO_ROOT)/cmd/synology-volume-bootstrap -name
 STAGE_TARGETS   := $(SPKSRC_DIR)/cross/seaweedfs \
                    $(SPKSRC_DIR)/diyspk/seaweedfs
 
-.PHONY: all spk stage clean-stage bootstrap test test-bootstrap test-supervisor
+.PHONY: all spk stage clean-stage bootstrap test test-bootstrap test-supervisor test-package-source test-package-metadata
 
 all: spk
 
@@ -42,7 +42,13 @@ test-bootstrap:
 test-supervisor:
 	sh $(REPO_ROOT)/tests/run-supervisor.sh
 
-test: test-bootstrap test-supervisor
+test-package-source:
+	sh $(REPO_ROOT)/tests/package-source.sh
+
+test-package-metadata:
+	sh $(REPO_ROOT)/tests/package-metadata.sh
+
+test: test-bootstrap test-supervisor test-package-source test-package-metadata
 
 # Stage our authoritative source into the spksrc submodule. Recreate each
 # destination so deleted source files cannot linger in the package context.
