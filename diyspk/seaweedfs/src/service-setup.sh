@@ -29,6 +29,47 @@ ${SYNOPKG_PKGDEST}/bin/run.sh $i"
     i=$((i + 1))
 done
 
+# DSM starts package services with a 1024-descriptor soft limit and a
+# 4096 HARD limit, so run.sh's `ulimit -n 65536` clamps to 4096 and there
+# is nothing a package-level script can do about it: a process cannot
+# raise its own hard limit. A volume server holds .dat + .idx + .ldb open
+# per volume, so a few hundred volumes plus replication sockets exhausts
+# it — that is the 2026-08-05 SIGSEGV and 359 under-replicated volumes.
+#
+# The hard limit is inherited from the systemd unit DSM generates for the
+# package, so raise it there. LimitNOFILE sets soft AND hard, which is
+# what actually lifts the 4096 ceiling. 65536 stays well under the
+# default fs.nr_open (1048576); a value above fs.nr_open makes the unit
+# fail to start, so do not raise this to `infinity`.
+#
+# MemoryMax/TasksMax are installed here too rather than documented as a
+# manual `seaweedfs.slice.d/memory.conf` step. The manual step was never
+# performed on appmana-017-ds, which is how two unbounded volume servers
+# drove the NAS into global reclaim until it could no longer fork() —
+# DSM's own web UI, sshd and smbd all died while the kernel-side NFS and
+# iSCSI targets kept serving. A limit that depends on someone remembering
+# to install it is not a limit.
+install_resource_limits() {
+    UNIT="pkgctl-${SYNOPKG_PKGNAME}.service"
+    DROPIN_DIR="/etc/systemd/system/${UNIT}.d"
+
+    command -v systemctl >/dev/null 2>&1 || return 0
+
+    install -d -m 755 "${DROPIN_DIR}" || return 0
+    cat > "${DROPIN_DIR}/appmana-limits.conf" <<'LIMITS'
+# Installed by the seaweedfs package. /etc/systemd/system survives DSM
+# updates; /usr/lib/systemd/system does not, so it must live here.
+[Service]
+LimitNOFILE=65536
+MemoryAccounting=true
+MemoryMax=5G
+TasksMax=4096
+LIMITS
+    chmod 644 "${DROPIN_DIR}/appmana-limits.conf"
+
+    systemctl daemon-reload >/dev/null 2>&1 || true
+}
+
 service_prestart() {
     # Remove stale argv files so instances > 0 wait for THIS start's
     # bootstrap render instead of exec-ing against old master addresses.
@@ -39,6 +80,8 @@ service_postinst() {
     install -d -m 700 -o "${SC_USER:-sc-${SYNOPKG_PKGNAME}}" "${KUBE_DIR}" "${TLS_DIR}" "${RUN_DIR}" "${OCI_DIR}"
     install -d -m 755 "${SYNOPKG_PKGVAR}/log"
     : > "${LOG_FILE}"
+
+    install_resource_limits
 
     if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ]; then
         # Persist the bearer token to a 0600 file owned by the package user.
@@ -111,4 +154,7 @@ service_preuninst() {
 service_postupgrade() {
     # Recreate state directories in case ownership/perms drifted.
     install -d -m 700 -o "${SC_USER:-sc-${SYNOPKG_PKGNAME}}" "${KUBE_DIR}" "${TLS_DIR}" "${RUN_DIR}" "${OCI_DIR}"
+
+    # Re-assert on upgrade: a DSM update can regenerate the package unit.
+    install_resource_limits
 }

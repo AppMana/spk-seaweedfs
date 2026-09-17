@@ -1,6 +1,6 @@
 SPK_NAME = seaweedfs
 SPK_VERS = 4.40
-SPK_REV = 3
+SPK_REV = 4
 SPK_ICON = src/seaweedfs.png
 
 DEPENDS = cross/seaweedfs

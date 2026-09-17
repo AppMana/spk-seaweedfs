@@ -23,7 +23,7 @@ Or download directly on the NAS from a release artifact:
 ```bash
 ssh admin@nas \
   curl -fL -o /tmp/seaweedfs.spk \
-  https://github.com/AppMana/spk-seaweedfs/releases/download/v4.40-3/seaweedfs_x64-7.2_4.40-3.spk
+  https://github.com/AppMana/spk-seaweedfs/releases/download/v4.40-4/seaweedfs_x64-7.2_4.40-4.spk
 ```
 
 ## 2. Install

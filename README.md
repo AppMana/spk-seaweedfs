@@ -73,6 +73,45 @@ network access, and when a mutable tag can't be resolved offline the
 bootstrap falls back to the last extracted image. Clearing `weed.image`
 reverts to the bundled binary on the next restart.
 
+## Resource limits
+
+The supervisor applies a 3072 MiB Go heap budget **divided by
+`volume.instances`**, 1024 MiB concurrent upload and download admission limits,
+and a 1 MiB read buffer. One instance gets the full 3 GiB; two get 1536 MiB
+each. An explicit `GOMEMLIMIT` environment variable or matching
+`volume.extraFlags` overrides this. The Go limit is a soft target and does not
+bound filesystem cache, mmap'd index files, or total process memory.
+
+`service_postinst` and `service_postupgrade` install
+`/etc/systemd/system/pkgctl-seaweedfs.service.d/appmana-limits.conf`:
+
+```ini
+[Service]
+LimitNOFILE=65536
+MemoryAccounting=true
+MemoryMax=5G
+TasksMax=4096
+```
+
+`LimitNOFILE` is the only way to lift DSM's **4096 hard** descriptor ceiling. A
+process cannot raise its own hard limit, so `run.sh`'s `ulimit -n 65536` clamps
+to 4096 without this drop-in, and a volume server holding `.dat` + `.idx` +
+`.ldb` per volume exhausts that at a few hundred volumes. Keep the value under
+`fs.nr_open` (default 1048576); `infinity` makes the unit fail to start.
+
+These were previously a manual step that nothing installed and nobody
+performed, which is how two unbounded volume servers exhausted
+`appmana-017-ds` until DSM could no longer `fork()`. Verify after install:
+
+```sh
+systemctl show pkgctl-seaweedfs.service -p LimitNOFILE -p MemoryMax
+tr '\0' '\n' < /proc/$(pgrep -f 'weed volume' | head -1)/environ | grep GOMEMLIMIT
+grep 'nofile soft=' /var/packages/seaweedfs/var/log/weed.log | tail -2
+```
+
+`/etc/systemd/system` survives DSM updates; `/usr/lib/systemd/system` does not,
+which is why the drop-in lives there and is re-asserted on upgrade.
+
 ## How it joins the cluster
 
 1. `service_prestart` runs `synology-volume-bootstrap`.
