@@ -15,7 +15,7 @@ cat >"$TMP/fake-weed" <<'EOF'
 fail() { printf '%s\n' "$1" >"$MISMATCH"; exit 0; }
 [ "$GOMEMLIMIT" = "$EXPECT_GOMEMLIMIT" ] || fail "GOMEMLIMIT=$GOMEMLIMIT want $EXPECT_GOMEMLIMIT"
 [ "$1" = volume ] || fail "argv1=$1"
-[ "$2" = -concurrentUploadLimitMB=1024 ] || fail "argv2=$2"
+[ "$2" = -concurrentUploadLimitMB=3072 ] || fail "argv2=$2"
 [ "$3" = -concurrentDownloadLimitMB=1024 ] || fail "argv3=$3"
 [ "$4" = -readBufferSizeMB=1 ] || fail "argv4=$4"
 count=0

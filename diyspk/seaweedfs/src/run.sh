@@ -107,7 +107,7 @@ trap 'if [ -n "$CHILD" ]; then kill "$CHILD" 2>/dev/null; fi; exit 0' TERM INT
 
 BACKOFF=1
 while :; do
-  "${RUN_WEED}" volume -concurrentUploadLimitMB=1024 -concurrentDownloadLimitMB=1024 -readBufferSizeMB=1 "$@" >>"${LOG_FILE}" 2>&1 &
+  "${RUN_WEED}" volume -concurrentUploadLimitMB=3072 -concurrentDownloadLimitMB=1024 -readBufferSizeMB=1 "$@" >>"${LOG_FILE}" 2>&1 &
   CHILD=$!
   if wait "$CHILD"; then
     STATUS=0
