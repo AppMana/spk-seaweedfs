@@ -1,5 +1,7 @@
 # xpenology DSM VM (lab)
 
+## Historical procedure
+
 QEMU/KVM VM booting the RR loader on the containernet fabric. Every
 step below is scripted.
 
