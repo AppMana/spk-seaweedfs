@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
 
 jobs:
   bootstrap-tests:
@@ -15,14 +16,20 @@ jobs:
           go-version-file: cmd/synology-volume-bootstrap/go.mod
           cache-dependency-path: cmd/synology-volume-bootstrap/go.sum
       - name: Run unit tests
-        working-directory: cmd/synology-volume-bootstrap
-        run: go test -race -count=1 ./...
+        run: python3 tests/bootstrap_suite.py --log "$RUNNER_TEMP/bootstrap-tests.jsonl"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bootstrap-test-results
+          path: ${{ runner.temp }}/bootstrap-tests.jsonl
       - name: Verify daemon supervision
         run: sh tests/run-supervisor.sh
       - name: Verify bundled SeaweedFS source
         run: sh tests/package-source.sh
       - name: Verify package metadata safety
         run: sh tests/package-metadata.sh
+      - name: Verify package artifact rejection tests
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
       - name: Verify cross-compile (linux/amd64, no cgo)
         working-directory: cmd/synology-volume-bootstrap
         env:
@@ -34,3 +41,33 @@ jobs:
         run: |
           file /tmp/synology-volume-bootstrap
           file /tmp/synology-volume-bootstrap | grep -q "statically linked"
+
+  package-build:
+    needs: bootstrap-tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y build-essential make wget rsync tar gzip jq moreutils imagemagick
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cmd/synology-volume-bootstrap/go.mod
+      - name: Build and inspect exact SPK
+        run: |
+          make all
+          python3 tests/package_artifact.py > spksrc/packages/artifact-manifest.json
+          spk=$(python3 tests/package_artifact.py --path-only)
+          sha256sum "$spk" > "$spk.sha256"
+          printf 'SPK_PATH=%s\n' "$spk" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: synology-spk-x64-7.2
+          path: |
+            ${{ env.SPK_PATH }}
+            ${{ env.SPK_PATH }}.sha256
+            spksrc/packages/artifact-manifest.json
+          if-no-files-found: error
