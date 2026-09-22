@@ -1,5 +1,26 @@
 # xpenology DSM VM (lab)
 
+## Qualification status and isolation boundary
+
+The scripts below are the **legacy containernet/kind lab**, not the new
+Labcontainers release gate. The historical install/read/write result does not
+qualify current candidate packages, upgrades, rollback, or data-preserving
+uninstall. `vm-up.sh` reuses existing disks and `tap-dsm`; `provision.sh` discovers
+an SPK and an existing cluster rather than requiring exact qualified artifacts.
+Do not run them against an existing lab or NAS to qualify a release.
+
+The replacement lifecycle gate must use private copies of both the RR boot
+image and DSM data disk, a new Labcontainers session with no production routes,
+explicit baseline/candidate SPK hashes, and lab-only credentials. Existing
+`out/rr.img` and `out/data.qcow2` are seed inputs, not writable test targets.
+Record the DSM build/model and test install, restart, upgrade, rollback where
+supported, and uninstall with checksum-verified retained data. Crash tests must
+also verify recovery after actual abrupt VM termination. Until this gate runs,
+leave `DSM_QUALIFIED_SPK_SHA256` unset; a successful SPK build is not DSM
+qualification. See the repository README for the artifact promotion procedure.
+
+## Historical procedure
+
 QEMU/KVM VM booting the RR loader on the containernet fabric. Every
 step below is scripted and was validated end-to-end on 2026-07-20 (DSM
 7.2.2-72806, DS3622xs+/broadwellnk): the VM joined a seaweedfs-operator
