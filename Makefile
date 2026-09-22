@@ -37,7 +37,7 @@ $(BOOTSTRAP_BIN): $(BOOTSTRAP_SRC)
 	  $(GO) build -ldflags "-s -w" -trimpath -o $@ ./
 
 test-bootstrap:
-	cd $(REPO_ROOT)/cmd/synology-volume-bootstrap && $(GO) test ./...
+	@log=$$(mktemp /tmp/synology-bootstrap-tests.XXXXXXXX); python3 $(REPO_ROOT)/tests/bootstrap_suite.py --log "$$log"
 
 test-supervisor:
 	sh $(REPO_ROOT)/tests/run-supervisor.sh
@@ -48,7 +48,11 @@ test-package-source:
 test-package-metadata:
 	sh $(REPO_ROOT)/tests/package-metadata.sh
 
-test: test-bootstrap test-supervisor test-package-source test-package-metadata
+.PHONY: test-runner-contracts
+test-runner-contracts:
+	python3 -m unittest discover -s $(REPO_ROOT)/tests -p 'test_*.py' -v
+
+test: test-bootstrap test-supervisor test-package-source test-package-metadata test-runner-contracts
 
 # Stage our authoritative source into the spksrc submodule. Recreate each
 # destination so deleted source files cannot linger in the package context.

@@ -6,54 +6,40 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-spk:
+  qualification:
+    uses: ./.github/workflows/test.yml
+
+  publish-spk:
+    needs: qualification
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      DSM_QUALIFIED_SPK_SHA256: ${{ vars.DSM_QUALIFIED_SPK_SHA256 }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          submodules: recursive
-
-      - name: Install spksrc build prerequisites
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
-            build-essential make wget rsync tar gzip \
-            jq moreutils imagemagick
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: cmd/synology-volume-bootstrap/go.mod
-          cache-dependency-path: cmd/synology-volume-bootstrap/go.sum
-
-      - name: Cache spksrc downloads + Go module cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            spksrc/distrib
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-spksrc-${{ hashFiles('cross/seaweedfs/Makefile', 'cross/seaweedfs/digests') }}
-          restore-keys: |
-            ${{ runner.os }}-spksrc-
-
-      - name: Build SPK
-        run: make all
-
-      - name: Capture SPK path
+          name: synology-spk-x64-7.2
+          path: spksrc/packages
+      - name: Require matching tag and DSM-qualified artifact
         id: spk
         run: |
-          spk=$(find spksrc/packages -name 'seaweedfs_*.spk' | head -1)
+          spk=$(python3 tests/package_artifact.py --tag "$GITHUB_REF_NAME" --path-only)
+          actual=$(sha256sum "$spk" | cut -d ' ' -f 1)
+          if [[ ! "$DSM_QUALIFIED_SPK_SHA256" =~ ^[0-9a-f]{64}$ ]] || [[ "$actual" != "$DSM_QUALIFIED_SPK_SHA256" ]]; then
+            echo '::error::This exact SPK has not been qualified in the isolated DSM lifecycle lab. Publication is blocked.'
+            exit 1
+          fi
           echo "path=$spk" >> "$GITHUB_OUTPUT"
-          echo "name=$(basename $spk)" >> "$GITHUB_OUTPUT"
-          sha256sum "$spk" > "$spk.sha256"
-          ls -la "$spk" "$spk.sha256"
-
-      - name: Upload to release
+      - name: Upload the qualified bytes without rebuilding
         uses: softprops/action-gh-release@v2
         with:
           files: |
             ${{ steps.spk.outputs.path }}
             ${{ steps.spk.outputs.path }}.sha256
+            spksrc/packages/artifact-manifest.json
           fail_on_unmatched_files: true

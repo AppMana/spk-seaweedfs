@@ -51,6 +51,28 @@ The bootstrap binary is built once with the host's Go (`CGO_ENABLED=0 GOOS=linux
 
 See [docs/install-cli.md](docs/install-cli.md) for the SSH-based path. The DSM Package Center route works the same way once `Trust Level: Any publisher` is enabled (or via the one-time confirmation dialog on DSM 7.2+).
 
+## Package qualification and publication
+
+`make test` requires all 25 reviewed bootstrap tests to pass (no missing tests
+or skips), plus supervisor, source, metadata and runner-contract checks. PR CI
+also builds the x64 DSM 7.2 SPK and inspects its INFO version/architecture,
+executable lifecycle hooks, x86-64 payloads and component hashes. Run
+`python3 tests/package_artifact.py` to inspect the exact version/revision named
+by the package Makefile; it never selects an arbitrary older SPK.
+
+Tag releases reuse these checks and upload the same built artifact, without
+rebuilding it. The tag must be `v<SPK_VERS>-<SPK_REV>`. Publication is blocked
+unless repository Actions variable `DSM_QUALIFIED_SPK_SHA256` matches that
+artifact's SHA-256. Leave this unset until the exact downloaded CI artifact
+passes isolated DSM install/upgrade/reboot/rollback/uninstall-preservation tests.
+After qualification, set the digest and rerun only the failed publication job
+so the already-tested bytes are reused; rerunning the build requires fresh
+qualification. This temporary promotion gate does not itself execute DSM tests.
+Never set the variable merely because source tests or package inspection pass.
+
+The current package still bundles the pinned 4.40 source; a locally built
+`4.40-4` is an upgrade-test baseline, not the new 4.47 reliability candidate.
+
 ## Configuring
 
 Single source of truth is `/var/packages/seaweedfs/var/volume.yaml`. The DSM wizard writes this file from form inputs; the SSH path edits it directly. They are bit-for-bit equivalent. See [docs/configure-cli.md](docs/configure-cli.md).
