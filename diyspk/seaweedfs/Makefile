@@ -1,6 +1,6 @@
 SPK_NAME = seaweedfs
-SPK_VERS = 4.40
-SPK_REV = 4
+SPK_VERS = 4.47
+SPK_REV = 1
 SPK_ICON = src/seaweedfs.png
 
 DEPENDS = cross/seaweedfs
@@ -13,7 +13,7 @@ DISPLAY_NAME = SeaweedFS Volume
 DESCRIPTION = SeaweedFS volume server that joins an existing seaweedfs-operator-managed cluster. Reads cluster topology from the Kubernetes API via a service-account token, then runs the upstream weed volume daemon advertised on the LAN.
 HOMEPAGE = https://github.com/seaweedfs/seaweedfs
 LICENSE = Apache-2.0
-CHANGELOG = "Tracks SeaweedFS 4.40 (AppMana fork). Preserves daemon supervision across nonzero child exits, including OOM exit 137, and verifies restart behavior in CI."
+CHANGELOG = "Lab qualification candidate: pinned SeaweedFS 4.47 reliability branch, large-volume offsets, and supervised volume daemon. Not approved for deployment until exact-artifact DSM lifecycle qualification passes."
 
 WIZARDS_DIR = src/wizard
 

@@ -70,6 +70,13 @@ so the already-tested bytes are reused; rerunning the build requires fresh
 qualification. This temporary promotion gate does not itself execute DSM tests.
 Never set the variable merely because source tests or package inspection pass.
 
+For a new candidate, update `PKG_VERS`/`PKG_COMMIT` and the verified archive
+digests in `cross/seaweedfs/`, `SPK_VERS`/`SPK_REV` in
+`diyspk/seaweedfs/Makefile`, and the reviewed source expectations in
+`tests/package-source.sh`. Keep the baseline SPK and both artifact manifests;
+the exact candidate path is derived by `tests/package_artifact.py`, never by
+selecting an arbitrary SPK from the build directory.
+
 ## Configuring
 
 Single source of truth is `/var/packages/seaweedfs/var/volume.yaml`. The DSM wizard writes this file from form inputs; the SSH path edits it directly. They are bit-for-bit equivalent. See [docs/configure-cli.md](docs/configure-cli.md).

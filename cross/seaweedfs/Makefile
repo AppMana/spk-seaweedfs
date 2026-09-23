@@ -1,6 +1,6 @@
 PKG_NAME = seaweedfs
-PKG_VERS = 4.40-appmana.post.2
-PKG_COMMIT = 358f47b1f817549b725e589b245acf9755b74f43
+PKG_VERS = 4.47-appmana.lab.1
+PKG_COMMIT = 3132c4f2ad1315f73ab69b4f0a711879ead73212
 PKG_EXT = tar.gz
 PKG_DIST_NAME = $(PKG_COMMIT).$(PKG_EXT)
 PKG_DIST_SITE = https://github.com/AppMana/forks-seaweedfs/archive
@@ -53,7 +53,7 @@ seaweedfs_compile:
 	@$(MSG) "- Build weed binary (5BytesOffset, 8000GB per volume)"
 	@cd $(GO_SRC_DIR) && env $(ENV) go build \
 		-tags 5BytesOffset \
-		-ldflags "-s -w -X github.com/seaweedfs/seaweedfs/weed/util/version.COMMIT=$(PKG_VERS)" \
+		-ldflags "-s -w -X github.com/seaweedfs/seaweedfs/weed/util/version.COMMIT=$(PKG_COMMIT)" \
 		-buildvcs=false \
 		-o $(GO_BIN_DIR) \
 		./weed
