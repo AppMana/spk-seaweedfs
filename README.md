@@ -70,8 +70,21 @@ so the already-tested bytes are reused; rerunning the build requires fresh
 qualification. This temporary promotion gate does not itself execute DSM tests.
 Never set the variable merely because source tests or package inspection pass.
 
-The current package still bundles the pinned 4.40 source; a locally built
-`4.40-4` is an upgrade-test baseline, not the new 4.47 reliability candidate.
+The current package definition is the **lab-only 4.47-1 candidate**, pinning
+SeaweedFS `3132c4f2ad1315f73ab69b4f0a711879ead73212`; its application code is
+unchanged from the Windows/Linux reliability candidate. The old `4.40-4` SPK
+remains the upgrade-test baseline. Do not deploy or set
+`DSM_QUALIFIED_SPK_SHA256` until the exact candidate artifact has passed real
+DSM install, restart/crash, upgrade, supported rollback, and data-preserving
+uninstall tests. Component tests and structural SPK inspection do not satisfy
+that gate. The binary embeds its full source SHA, not just a package label.
+
+For a new candidate, update `PKG_VERS`/`PKG_COMMIT` and the verified archive
+digests in `cross/seaweedfs/`, `SPK_VERS`/`SPK_REV` in
+`diyspk/seaweedfs/Makefile`, and the reviewed source expectations in
+`tests/package-source.sh`. Keep the baseline SPK and both artifact manifests;
+the exact candidate path is derived by `tests/package_artifact.py`, never by
+selecting an arbitrary SPK from the build directory.
 
 ## Configuring
 
