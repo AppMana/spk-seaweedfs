@@ -86,6 +86,18 @@ digests in `cross/seaweedfs/`, `SPK_VERS`/`SPK_REV` in
 the exact candidate path is derived by `tests/package_artifact.py`, never by
 selecting an arbitrary SPK from the build directory.
 
+The local 2026-09-23 build completed and passed `tests/package_artifact.py`:
+`seaweedfs_x64-7.2_4.47-1.spk`, SHA-256
+`6dc1b62e6c2c6d9ed751709571a06c024d323ea7480068f482af0d004c46b344`.
+Its static x86-64 weed payload SHA-256 is
+`ccc2ef604580082c3ae6d1b87cfbe70fd069f65c367176fbc2e73b5869bc0ce7`;
+`weed version` reports `8000GB 4.47` and the pinned full source SHA. All 25
+bootstrap cases, supervisor/source/metadata contracts and artifact rejection
+tests passed. This artifact includes the existing local comment-only supervisor
+edits and is lab evidence, not a clean release build or DSM qualification.
+The retained `4.40-4` baseline SHA-256 is
+`1a1c230d4f26649ab34b015766a5fdb9ed4950733b71ab79afe2418536497e05`.
+
 ## Configuring
 
 Single source of truth is `/var/packages/seaweedfs/var/volume.yaml`. The DSM wizard writes this file from form inputs; the SSH path edits it directly. They are bit-for-bit equivalent. See [docs/configure-cli.md](docs/configure-cli.md).
