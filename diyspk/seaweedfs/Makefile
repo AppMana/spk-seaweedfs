@@ -1,6 +1,6 @@
 SPK_NAME = seaweedfs
 SPK_VERS = 4.47
-SPK_REV = 6
+SPK_REV = 9
 SPK_ICON = src/seaweedfs.png
 
 DEPENDS = cross/seaweedfs
@@ -18,6 +18,8 @@ CHANGELOG = "Lab qualification candidate: pinned SeaweedFS 4.47 reliability bran
 WIZARDS_DIR = src/wizard
 
 STARTABLE = yes
+# Native dependency registration is performed by bin/register-service.sh
+# as an administrator; DSM ignores custom units in start_dep_services.
 SERVICE_USER = auto
 SERVICE_SETUP = src/service-setup.sh
 SSS_SCRIPT = src/start-stop-status.sh
@@ -43,5 +45,6 @@ seaweedfs_extra_install:
 	install -m 755 -d $(STAGING_DIR)/bin
 	install -m 755 src/bin/synology-volume-bootstrap $(STAGING_DIR)/bin/synology-volume-bootstrap
 	install -m 755 src/run.sh $(STAGING_DIR)/bin/run.sh
+	install -m 755 src/register-service.sh $(STAGING_DIR)/bin/register-service.sh
 	install -m 755 -d $(STAGING_DIR)/var
 	install -m 644 src/volume_template.yaml $(STAGING_DIR)/var/volume_template.yaml

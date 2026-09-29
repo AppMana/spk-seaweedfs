@@ -87,6 +87,19 @@ grep -Fx 'LimitNPROC=4096' /tmp/seaweedfs-__RUN__-limits
 grep -Fx 'User=sc-seaweedfs' /tmp/seaweedfs-__RUN__-limits
 grep -Fx 'Group=synocommunity' /tmp/seaweedfs-__RUN__-limits
 id sc-seaweedfs
+sh "$pkg/target/bin/register-service.sh"
+# Exercise the real package-manager control boundary, not a root systemctl
+# workaround. Without a backend this qualifies supervision, not membership.
+systemctl show pkgctl-seaweedfs.service -p Requires -p Wants -p After
+if ! /usr/syno/bin/synopkg start seaweedfs; then
+  systemctl status pkgctl-seaweedfs.service "$unit" --no-pager || true
+  journalctl -u "$unit" --no-pager -n 30 || true
+  tail -20 /var/log/packages/seaweedfs.log || true
+  exit 1
+fi
+systemctl is-active "$unit"
+/usr/syno/bin/synopkg stop seaweedfs
+test "$(systemctl is-active "$unit" || true)" = inactive
 echo DSM_PACKAGE_INSTALL_UPGRADE_PASS
 `
 		script = strings.NewReplacer("__BASELINE__", shellQuote(basePath), "__CANDIDATE__", shellQuote(candidatePath),

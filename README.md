@@ -120,7 +120,19 @@ automatic defaults require the pinned AppMana memory fix.
 
 DSM installs the bundled `conf/systemd/pkg-seaweedfs-volume.service` into
 `/usr/local/lib/systemd/system/`. The service runs as `sc-seaweedfs`; installation
-hooks remain unprivileged. Its resource settings are:
+hooks remain unprivileged. DSM copies this unit but does **not** enable its
+dependency on package startup. After installing/upgrading the SPK, register it
+as an administrator before starting the package:
+
+```sh
+sudo sh /var/packages/seaweedfs/target/bin/register-service.sh
+sudo synopkg start seaweedfs
+```
+
+Registration is idempotent and does not start a daemon. Normal Package Center
+and `synopkg` start/stop controls then manage the bounded, unprivileged unit.
+The SPK alone is not a complete installation without registration. Its resource
+settings are:
 
 ```ini
 [Service]

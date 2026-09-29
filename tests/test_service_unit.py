@@ -11,6 +11,8 @@ class ServiceUnit(unittest.TestCase):
         config = configparser.ConfigParser(interpolation=None, strict=False)
         config.read_string(unit.read_text())
         service = config['Service']
+        self.assertEqual(config['Unit']['Before'], 'pkgctl-seaweedfs.service')
+        self.assertEqual(config['Install']['RequiredBy'], 'pkgctl-seaweedfs.service')
         self.assertEqual(service['User'], 'sc-seaweedfs')
         self.assertEqual(service['Group'], 'synocommunity')
         self.assertEqual(service['Slice'], 'seaweedfs.slice')
