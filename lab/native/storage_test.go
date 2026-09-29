@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/appmana/labcontainers/pkg/client"
 )
@@ -29,7 +30,7 @@ func dsmUpload(t *testing.T, ctx context.Context, lab *client.Session, name stri
 	command := `. /run/dsm-account.env
 export SSHPASS="$DSM_PASS"
 exec sshpass -e scp -O -p -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new ` + shellQuote(local) + ` "$DSM_USER@192.0.2.20:` + remote + `"`
-	r, err := peer.Exec(ctx, "sh", "-ec", command)
+	r, err := peer.ExecWithTimeout(ctx, 5*time.Minute, "sh", "-ec", command)
 	if err != nil || r.ExitCode != 0 {
 		t.Fatalf("DSM upload %s: %v %v", name, r, err)
 	}
@@ -42,12 +43,15 @@ func dsmRoot(t *testing.T, ctx context.Context, lab *client.Session, script stri
 	command := `. /run/dsm-account.env
 export SSHPASS="$DSM_PASS"
 printf '%s\n' "$DSM_PASS" | sshpass -e ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "$DSM_USER@192.0.2.20" ` + shellQuote("sudo -S -p '' /bin/sh "+shellQuote(remote))
-	r, err := lab.Node("peer").Exec(ctx, "sh", "-ec", command)
+	r, err := lab.Node("peer").ExecWithTimeout(ctx, 15*time.Minute, "sh", "-ec", command)
 	if r != nil {
 		t.Logf("DSM probe stdout:\n%s\nstderr:\n%s", r.Stdout, r.Stderr)
 	}
-	if err != nil || r.ExitCode != 0 {
-		t.Fatalf("DSM probe failed: %v %v", r, err)
+	if err != nil {
+		t.Fatalf("DSM probe transport failed: %v", err)
+	}
+	if r.ExitCode != 0 {
+		t.Fatalf("DSM probe failed: exit %d (output above)", r.ExitCode)
 	}
 	return string(r.Stdout)
 }

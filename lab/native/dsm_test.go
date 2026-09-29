@@ -44,6 +44,10 @@ func TestLiveDSMPrivateBoot(t *testing.T) {
 }
 
 func runDSM(t *testing.T, afterBoot func(context.Context, *client.Session)) {
+	runDSMFor(t, 10*time.Minute, afterBoot)
+}
+
+func runDSMFor(t *testing.T, budget time.Duration, afterBoot func(context.Context, *client.Session)) {
 	t.Helper()
 	private := os.Getenv("DSM_PRIVATE_DIR")
 	if private == "" {
@@ -61,7 +65,7 @@ func runDSM(t *testing.T, afterBoot func(context.Context, *client.Session)) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
 	c, err := client.Launch(ctx, client.Options{LabdPath: daemon, StateDir: filepath.Join(private, "labd-state")})
 	if err != nil {
@@ -72,7 +76,7 @@ func runDSM(t *testing.T, afterBoot func(context.Context, *client.Session)) {
 			t.Error("cleanup", err)
 		}
 	}()
-	lab, err := c.Start(ctx, &labv1.LabSpec{Topology: source, Nodes: map[string]*labv1.NodeExtension{"dsm": {Control: "container"}, "peer": {Control: "container"}}}, 12*time.Minute)
+	lab, err := c.Start(ctx, &labv1.LabSpec{Topology: source, Nodes: map[string]*labv1.NodeExtension{"dsm": {Control: "container"}, "peer": {Control: "container"}}}, budget+2*time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}

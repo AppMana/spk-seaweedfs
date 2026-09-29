@@ -52,7 +52,7 @@ test-package-metadata:
 test-runner-contracts:
 	python3 -m unittest discover -s $(REPO_ROOT)/tests -p 'test_*.py' -v
 
-.PHONY: test-native test-dsm-live test-dsm-storage
+.PHONY: test-native test-dsm-live test-dsm-storage test-dsm-package
 test-native:
 	cd $(REPO_ROOT)/lab/native && $(GO) test -race -run '^TestDSM' ./...
 
@@ -64,6 +64,10 @@ test-dsm-live:
 test-dsm-storage:
 	@test -n "$$DSM_PRIVATE_DIR" && test -n "$$DSM_VM_IMAGE" && test -n "$$DSM_PEER_IMAGE" && test -n "$$LABCONTAINERS_LABD"
 	cd $(REPO_ROOT)/lab/native && $(GO) test -v -count=1 -timeout 14m -run '^TestLiveDSMStorageIntegrity$$' ./...
+
+test-dsm-package:
+	@test -n "$$DSM_PRIVATE_DIR" && test -n "$$DSM_VM_IMAGE" && test -n "$$DSM_PEER_IMAGE" && test -n "$$LABCONTAINERS_LABD"
+	cd $(REPO_ROOT)/lab/native && $(GO) test -v -count=1 -timeout 24m -run '^TestLiveDSMPackageInstallUpgrade$$' ./...
 
 test: test-bootstrap test-supervisor test-package-source test-package-metadata test-runner-contracts test-native
 
