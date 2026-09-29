@@ -70,7 +70,7 @@ so the already-tested bytes are reused; rerunning the build requires fresh
 qualification. This temporary promotion gate does not itself execute DSM tests.
 Never set the variable merely because source tests or package inspection pass.
 
-The current package definition is the **lab-only 4.47-4 candidate**, pinning
+The current package definition is the **lab-only 4.47-6 candidate**, pinning
 SeaweedFS `5a21ae355b33eec636d8027dcfc0eeb6e8fdd27a`, the mixed-platform CSI-tested
 revision including durable-index replay fixes. The old `4.40-4` SPK
 remains the upgrade-test baseline. Do not deploy or set
@@ -123,47 +123,49 @@ reverts to the bundled binary on the next restart.
 ## Resource limits
 
 The supervisor applies a 3072 MiB Go heap budget **divided by
-`volume.instances`**, 1024 MiB concurrent upload and download admission limits,
+`volume.instances`**, 3072 MiB concurrent upload and 1024 MiB download admission limits,
 and a 1 MiB read buffer. One instance gets the full 3 GiB; two get 1536 MiB
 each. An explicit `GOMEMLIMIT` environment variable or matching
 `volume.extraFlags` overrides this. The Go limit is a soft target and does not
 bound filesystem cache, mmap'd index files, or total process memory.
 
-`service_postinst` and `service_postupgrade` install
-`/etc/systemd/system/pkgctl-seaweedfs.service.d/appmana-limits.conf`:
+DSM installs the bundled `conf/systemd/pkg-seaweedfs-volume.service` into
+`/usr/local/lib/systemd/system/`. The service runs as `sc-seaweedfs`; installation
+hooks remain unprivileged. Its resource settings are:
 
 ```ini
 [Service]
 LimitNOFILE=65536
 MemoryAccounting=true
-MemoryMax=5G
-TasksMax=4096
+MemoryLimit=5G
+LimitNPROC=4096
 ```
 
-`LimitNOFILE` is the only way to lift DSM's **4096 hard** descriptor ceiling. A
-process cannot raise its own hard limit, so `run.sh`'s `ulimit -n 65536` clamps
-to 4096 without this drop-in, and a volume server holding `.dat` + `.idx` +
-`.ldb` per volume exhausts that at a few hundred volumes. Keep the value under
-`fs.nr_open` (default 1048576); `infinity` makes the unit fail to start.
+DSM's generated package-control unit defaults to a **4096 hard** descriptor
+limit. The separate daemon unit raises this before switching to the package
+user. Keep `LimitNOFILE` below `fs.nr_open`; an unprivileged process cannot
+raise its inherited hard limit.
 
-These were previously a manual step that nothing installed and nobody
-performed, which is how two unbounded volume servers exhausted
-`appmana-017-ds` until DSM could no longer `fork()`. Verify after install:
+DSM 7.2's systemd 219 requires `MemoryLimit`, not `MemoryMax`; it does not
+support `TasksMax`. `LimitNPROC` instead bounds threads/processes belonging to
+the dedicated package UID, across all instances. The memory limit covers the
+whole daemon unit, not each instance separately. Check the running processes
+as well as systemd's loaded settings:
 
 ```sh
-systemctl show pkgctl-seaweedfs.service -p LimitNOFILE -p MemoryMax
+systemctl show pkg-seaweedfs-volume.service -p User -p LimitNOFILE -p MemoryLimit -p LimitNPROC
 tr '\0' '\n' < /proc/$(pgrep -f 'weed volume' | head -1)/environ | grep GOMEMLIMIT
 grep 'nofile soft=' /var/packages/seaweedfs/var/log/weed.log | tail -2
 ```
 
-`/etc/systemd/system` survives DSM updates; `/usr/lib/systemd/system` does not,
-which is why the drop-in lives there and is re-asserted on upgrade.
+Package upgrades reinstall the bundled unit through DSM's package manager;
+the package does not attempt to write privileged drop-ins from its hooks.
 
 ## How it joins the cluster
 
-1. `service_prestart` runs `synology-volume-bootstrap`.
-2. The bootstrap loads `volume.yaml`, builds a kube REST client from the bearer token, GETs `seaweeds.seaweed.com/<name>` plus the master `Service` / `Endpoints` in that namespace, and emits `weed volume` argv to `/var/packages/seaweedfs/var/run/argv`.
-3. `service_prestart` reads that file into a bash array and execs `weed volume "${args[@]}"`.
+1. DSM starts the package's daemon unit; `service_prestart` removes stale argument files.
+2. Instance zero's `run.sh` runs `synology-volume-bootstrap`. It reads `volume.yaml`, authenticates to Kubernetes, and discovers masters via `kube.masterService` or the operator's `seaweeds.seaweed.seaweedfs.com` resource, writing argument files under `/var/packages/seaweedfs/var/run/`.
+3. Each instance's `run.sh` reads its argument file and supervises the selected `weed volume` binary.
 4. The volume daemon opens its bidirectional gRPC heartbeat stream to a master and is enrolled into the cluster topology under the `dataCenter` / `rack` labels from `volume.yaml`. From a pod inside the cluster, `weed shell volume.list` then shows the Synology.
 
 There is no in-cluster controller and no new CRD. The seaweedfs-operator is unaware of the Synology beyond what it can see through `weed shell`. This is the v0.1 scope; future releases may add a `SynologyVolume` CR for status surfaces.

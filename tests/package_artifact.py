@@ -1,5 +1,6 @@
 """Inspect the exact expected SPK without executing or installing its payload."""
 import argparse
+import configparser
 import hashlib
 import io
 import json
@@ -45,7 +46,7 @@ def inspect_spk(path, version):
         arch = re.findall(r'^arch="([^"]*)"$', info, re.M)
         if len(arch) != 1 or 'broadwellnk' not in arch[0].split():
             raise ValueError('expected x64 Synology architecture coverage')
-        for script in ('preinst', 'postinst', 'preuninst', 'postuninst', 'preupgrade', 'postupgrade', 'start-stop-status'):
+        for script in ('preinst', 'postinst', 'preuninst', 'postuninst', 'preupgrade', 'postupgrade', 'start-stop-status', 'volume-control'):
             name = 'scripts/' + script
             contents(outer, entries, name)
             if not entries[name].mode & 0o111:
@@ -56,6 +57,21 @@ def inspect_spk(path, version):
         controls = privilege.get('ctrl-script', [])
         if any(item.get('run-as') != 'package' for item in controls):
             raise ValueError('DSM7 third-party package hooks must remain unprivileged')
+        unit_data = contents(outer, entries, 'conf/systemd/pkg-seaweedfs-volume.service')
+        unit = configparser.ConfigParser(interpolation=None, strict=False)
+        unit.read_string(unit_data.decode())
+        required = {'User': 'sc-seaweedfs', 'Group': 'synocommunity', 'Slice': 'seaweedfs.slice',
+                    'LimitNOFILE': '65536', 'LimitNPROC': '4096', 'MemoryAccounting': 'true',
+                    'MemoryLimit': '5G', 'KillMode': 'control-group',
+                    'ExecStart': '/var/packages/seaweedfs/scripts/volume-control start',
+                    'ExecStop': '/var/packages/seaweedfs/scripts/volume-control stop'}
+        if not unit.has_section('Service') or any(unit['Service'].get(key) != value for key, value in required.items()):
+            raise ValueError('missing DSM-compatible unprivileged daemon resource limits')
+        if any(key in unit['Service'] for key in ('MemoryMax', 'TasksMax')):
+            raise ValueError('unsupported DSM219 resource property')
+        control_hashes = {'conf/systemd/pkg-seaweedfs-volume.service': hashlib.sha256(unit_data).hexdigest()}
+        for name in ('scripts/start-stop-status', 'scripts/volume-control'):
+            control_hashes[name] = hashlib.sha256(contents(outer, entries, name)).hexdigest()
         payload = contents(outer, entries, 'package.tgz')
     hashes = {}
     with tarfile.open(fileobj=io.BytesIO(payload), mode='r:gz') as package:
@@ -70,7 +86,8 @@ def inspect_spk(path, version):
             hashes[name] = hashlib.sha256(data).hexdigest()
         contents(package, entries, 'var/volume_template.yaml')
     return {'path': str(path), 'version': version,
-            'sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'payload_sha256': hashes}
+            'sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'payload_sha256': hashes,
+            'control_sha256': control_hashes}
 
 
 def main():

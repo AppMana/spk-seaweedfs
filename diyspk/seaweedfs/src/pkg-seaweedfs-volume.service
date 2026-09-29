@@ -1,0 +1,26 @@
+[Unit]
+Description=SeaweedFS volume servers
+PartOf=pkgctl-seaweedfs.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=sc-seaweedfs
+Group=synocommunity
+Slice=seaweedfs.slice
+Environment=SYNOPKG_PKGNAME=seaweedfs
+Environment=SYNOPKG_DSM_VERSION_MAJOR=7
+Environment=SYNOPKG_PKGDEST=/var/packages/seaweedfs/target
+Environment=SYNOPKG_PKGVAR=/var/packages/seaweedfs/var
+ExecStart=/var/packages/seaweedfs/scripts/volume-control start
+ExecStop=/var/packages/seaweedfs/scripts/volume-control stop
+KillMode=control-group
+TimeoutStartSec=150
+TimeoutStopSec=150
+LimitNOFILE=65536
+# DSM 7.2 ships systemd 219: use MemoryLimit, not the newer MemoryMax.
+MemoryAccounting=true
+MemoryLimit=5G
+# RLIMIT_NPROC bounds all threads of our dedicated UID, across instances.
+# TasksMax is not available in systemd 219.
+LimitNPROC=4096
