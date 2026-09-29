@@ -70,9 +70,9 @@ so the already-tested bytes are reused; rerunning the build requires fresh
 qualification. This temporary promotion gate does not itself execute DSM tests.
 Never set the variable merely because source tests or package inspection pass.
 
-The current package definition is the **lab-only 4.47-6 candidate**, pinning
-SeaweedFS `5a21ae355b33eec636d8027dcfc0eeb6e8fdd27a`, the mixed-platform CSI-tested
-revision including durable-index replay fixes. The old `4.40-4` SPK
+The current package definition is the **lab-only 4.47-9 candidate**, pinning
+SeaweedFS `8ecd3e03f9fb7b4361cce12cd439520bfef00ca1`, including durable-index
+replay fixes and cgroup-derived memory/admission sizing. The old `4.40-4` SPK
 remains the upgrade-test baseline. Do not deploy or set
 `DSM_QUALIFIED_SPK_SHA256` until the exact candidate artifact has passed real
 DSM install, restart/crash, upgrade, supported rollback, and data-preserving
@@ -141,7 +141,19 @@ automatic defaults require the pinned AppMana memory fix.
 
 DSM installs the bundled `conf/systemd/pkg-seaweedfs-volume.service` into
 `/usr/local/lib/systemd/system/`. The service runs as `sc-seaweedfs`; installation
-hooks remain unprivileged. Its resource settings are:
+hooks remain unprivileged. DSM copies this unit but does **not** enable its
+dependency on package startup. After installing/upgrading the SPK, register it
+as an administrator before starting the package:
+
+```sh
+sudo sh /var/packages/seaweedfs/target/bin/register-service.sh
+sudo synopkg start seaweedfs
+```
+
+Registration is idempotent and does not start a daemon. Normal Package Center
+and `synopkg` start/stop controls then manage the bounded, unprivileged unit.
+The SPK alone is not a complete installation without registration. Its resource
+settings are:
 
 ```ini
 [Service]

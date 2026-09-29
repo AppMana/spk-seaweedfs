@@ -331,6 +331,11 @@ mount -o ro /dev/disk/by-label/LCQUAL /mnt/qualification`)
 		configPath := dsmUpload(t, ctx, lab, "volume.json", volumeConfig)
 		dsmRoot(t, ctx, lab, `set -eu
 test -f /root/seaweedfs-private-image
+trap 'result=$?; trap - EXIT; if [ "$result" != 0 ]; then
+  systemctl status pkgctl-seaweedfs.service pkg-seaweedfs-volume.service --no-pager || true
+  journalctl -u pkg-seaweedfs-volume.service --no-pager -n 60 || true
+  tail -30 /var/log/packages/seaweedfs.log || true
+fi; exit "$result"' EXIT
 pkg=/var/packages/seaweedfs
 grep -Fx `+shellQuote(`version="`+in.SPKVersion+`"`)+` "$pkg/INFO"
 printf '%s  %s\n' `+shellQuote(in.WeedSHA256)+` "$pkg/target/bin/weed" | sha256sum -c -
@@ -357,9 +362,18 @@ for pid in $(pidof weed); do
   cg=$(awk -F: '$2 == "memory" {print $3}' /proc/$pid/cgroup)
   test "$cg" = /seaweedfs.slice/pkg-seaweedfs-volume.service
   test "$(cat /sys/fs/cgroup/memory$cg/memory.limit_in_bytes)" = 5368709120
+  if tr '\000' '\n' < /proc/$pid/environ | grep -q '^GOMEMLIMIT='; then
+    echo 'single-instance DSM process must derive memory from its cgroup' >&2
+    exit 1
+  fi
+  if tr '\000' '\n' < /proc/$pid/cmdline | grep -Eq '^-concurrent(Upload|Download)LimitMB'; then
+    echo 'DSM process must use automatic admission defaults' >&2
+    exit 1
+  fi
   printf 'DSM_RUNNING_RESOURCE_LIMITS_PASS pid=%s uid=%s cgroup=%s\n' "$pid" "$uid" "$cg"
 done
 test "$found" = 1
+grep -E 'memory limits: available [1-9][0-9]* .*GOMEMLIMIT env false, Go memory limit [1-9][0-9]* \(set true\), upload admission [1-9][0-9]* MiB \(auto true\), download admission [1-9][0-9]* MiB \(auto true\)' /var/packages/seaweedfs/var/log/weed.log
 `)
 		t.Log("DSM_KUBERNETES_JOIN_PASS: authenticated discovery, real topology membership and running-process resource limits")
 		verifyDSMDataRecovery(t, ctx, lab)

@@ -60,6 +60,9 @@ def inspect_spk(path, version):
         unit_data = contents(outer, entries, 'conf/systemd/pkg-seaweedfs-volume.service')
         unit = configparser.ConfigParser(interpolation=None, strict=False)
         unit.read_string(unit_data.decode())
+        for section, key in [('Unit', 'Before'), ('Install', 'RequiredBy')]:
+            if not unit.has_section(section) or unit[section].get(key) != 'pkgctl-seaweedfs.service':
+                raise ValueError('missing bounded daemon dependency registration/order')
         required = {'User': 'sc-seaweedfs', 'Group': 'synocommunity', 'Slice': 'seaweedfs.slice',
                     'LimitNOFILE': '65536', 'LimitNPROC': '4096', 'MemoryAccounting': 'true',
                     'MemoryLimit': '5G', 'KillMode': 'control-group',
@@ -76,11 +79,11 @@ def inspect_spk(path, version):
     hashes = {}
     with tarfile.open(fileobj=io.BytesIO(payload), mode='r:gz') as package:
         entries = members(package)
-        for name in ('bin/weed', 'bin/synology-volume-bootstrap', 'bin/run.sh'):
+        for name in ('bin/weed', 'bin/synology-volume-bootstrap', 'bin/run.sh', 'bin/register-service.sh'):
             data = contents(package, entries, name)
             if not entries[name].mode & 0o111:
                 raise ValueError('non-executable payload: ' + name)
-            if name != 'bin/run.sh':
+            if not name.endswith('.sh'):
                 if len(data) < 20 or data[:6] != b'\x7fELF\x02\x01' or data[18:20] != b'\x3e\x00':
                     raise ValueError('expected little-endian x86-64 ELF: ' + name)
             hashes[name] = hashlib.sha256(data).hexdigest()

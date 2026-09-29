@@ -1,6 +1,7 @@
 [Unit]
 Description=SeaweedFS volume servers
 PartOf=pkgctl-seaweedfs.service
+Before=pkgctl-seaweedfs.service
 
 [Service]
 Type=oneshot
@@ -24,3 +25,6 @@ MemoryLimit=5G
 # RLIMIT_NPROC bounds all threads of our dedicated UID, across instances.
 # TasksMax is not available in systemd 219.
 LimitNPROC=4096
+
+[Install]
+RequiredBy=pkgctl-seaweedfs.service

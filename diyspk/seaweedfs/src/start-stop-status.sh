@@ -3,8 +3,15 @@
 # writable /etc drop-ins are needed; systemd applies limits before setuid.
 set -eu
 case "${1:-}" in
-    start|stop)
-        exec /usr/syno/bin/synosystemctl "$1" pkg-seaweedfs-volume.service
+    start)
+        # DSM must have started our declared dependency before this hook.
+        # Fail closed instead of spawning a daemon outside the bounded unit.
+        exec /var/packages/seaweedfs/scripts/volume-control status
+        ;;
+    stop)
+        # PartOf ties the system unit to pkgctl stop/restart. This hook only
+        # signals processes owned by the package user; it cannot control PID 1.
+        exec /var/packages/seaweedfs/scripts/volume-control stop
         ;;
     status|log)
         exec /var/packages/seaweedfs/scripts/volume-control "$1"
