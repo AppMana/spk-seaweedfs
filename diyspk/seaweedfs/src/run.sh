@@ -16,25 +16,24 @@
 # argv file to appear (service_prestart removed stale ones) and exec.
 set -e
 
-# Go heap target, shared across instances rather than applied per instance.
-#
-# This used to be a flat 3GiB each. On a two-instance rack (volume.instances: 2,
-# required so the rack has sameRackCount + 1 data nodes under the "011" policy)
-# that is a 6 GiB target inside the 5 G MemoryMax the package now installs, so
-# the cgroup OOM-kills before Go ever feels obliged to collect. Divide one
-# budget instead: a single instance behaves exactly as before, two get half
-# each. GOMEMLIMIT is a soft target and does not bound page cache or mmap'd
-# index files, so leave real headroom under MemoryMax.
-if [ -z "${GOMEMLIMIT}" ]; then
-  GOMEM_BUDGET_MIB=3072
+# Single-instance packages derive Go and admission limits in the core from
+# DSM's effective cgroup limit. An empty environment variable must be removed:
+# the core treats even a present-but-empty GOMEMLIMIT as an explicit override.
+# Multiple processes share the package cgroup, so retain a divided conservative
+# budget in that configuration; otherwise each would claim 90% of the SAME
+# limit. Explicit operator overrides remain per-process and are preserved.
+if [ -z "${GOMEMLIMIT:-}" ]; then
+  unset GOMEMLIMIT
   GOMEM_INSTANCES=$(sed -n 's/^[[:space:]]*instances:[[:space:]]*//p' \
     "${SYNOPKG_PKGVAR}/volume.yaml" 2>/dev/null | head -1)
   case "${GOMEM_INSTANCES}" in
     ''|*[!0-9]*|0) GOMEM_INSTANCES=1 ;;
   esac
-  GOMEMLIMIT="$((GOMEM_BUDGET_MIB / GOMEM_INSTANCES))MiB"
+  if [ "$GOMEM_INSTANCES" -gt 1 ]; then
+    GOMEMLIMIT="$((3072 / GOMEM_INSTANCES))MiB"
+    export GOMEMLIMIT
+  fi
 fi
-export GOMEMLIMIT
 
 IDX="${1:-0}"
 RUN_DIR="${SYNOPKG_PKGVAR}/run"
@@ -107,7 +106,7 @@ trap 'if [ -n "$CHILD" ]; then kill "$CHILD" 2>/dev/null; fi; exit 0' TERM INT
 
 BACKOFF=1
 while :; do
-  "${RUN_WEED}" volume -concurrentUploadLimitMB=3072 -concurrentDownloadLimitMB=1024 -readBufferSizeMB=1 "$@" >>"${LOG_FILE}" 2>&1 &
+  "${RUN_WEED}" volume -readBufferSizeMB=1 "$@" >>"${LOG_FILE}" 2>&1 &
   CHILD=$!
   if wait "$CHILD"; then
     STATUS=0
