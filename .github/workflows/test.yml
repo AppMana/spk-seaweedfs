@@ -38,7 +38,7 @@ jobs:
           name: bootstrap-test-results
           path: ${{ runner.temp }}/bootstrap-tests.jsonl
       - name: Verify daemon supervision
-        run: sh tests/run-supervisor.sh
+        run: make test-supervisor
       - name: Verify bundled SeaweedFS source
         run: sh tests/package-source.sh
       - name: Verify package metadata safety

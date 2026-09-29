@@ -37,6 +37,25 @@ type dsmClusterInputs struct {
 	Images                       *native.ClusterImages
 }
 
+func dsmLabShareName(session string) string {
+	// DSM's top-level share namespace is limited to 32 characters. Use a
+	// registered share, not an oversized ad-hoc directory that boot-time
+	// discovery can rename. Keep 96 bits of session-specific identity.
+	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(session)))
+	return "swlab-" + hash[:24]
+}
+
+func TestDSMLabShareNameFitsDSM(t *testing.T) {
+	id := "9345f3e54e271b1a9cd979b93f587cda"
+	name := dsmLabShareName(id)
+	if len(name) > 32 || len(name) < 12 || strings.ContainsAny(name, "/ .") {
+		t.Fatalf("invalid DSM share name %q (%d bytes)", name, len(name))
+	}
+	if name != dsmLabShareName(id) || name == dsmLabShareName(id+"different") {
+		t.Fatal("share name must be deterministic and session-specific")
+	}
+}
+
 func offlineImageIdentity(value string) (tag, canonical, digest string, err error) {
 	name, err := reference.ParseNormalizedNamed(value)
 	if err != nil {
@@ -321,7 +340,9 @@ mount -o ro /dev/disk/by-label/LCQUAL /mnt/qualification`)
 		}
 		tokenPath := dsmUpload(t, ctx, lab, "kube-token", token)
 		caPath := dsmUpload(t, ctx, lab, "kube-ca.crt", run("cat", "/var/lib/k0s/pki/ca.crt"))
-		dataDir := "/volume1/seaweedfs-kubernetes-" + lab.ID()
+		shareName := dsmLabShareName(lab.ID())
+		shareDir := "/volume1/" + shareName
+		dataDir := shareDir + "/volumes"
 		volumeConfig, err := json.Marshal(map[string]any{
 			"kube":   map[string]any{"apiserver": "https://192.0.2.30:6443", "tokenFile": "/var/packages/seaweedfs/var/kube/token", "caFile": "/var/packages/seaweedfs/var/kube/ca.crt", "namespace": ns.Name, "masterService": svc.Name, "masterAddressMode": "endpoints"},
 			"volume": map[string]any{"dir": dataDir, "ip": "192.0.2.20", "port": 8080, "grpcPort": 18080, "dataCenter": "lab", "rack": "synology", "max": 32, "instances": 1},
@@ -342,6 +363,9 @@ grep -Fx `+shellQuote(`version="`+in.SPKVersion+`"`)+` "$pkg/INFO"
 printf '%s  %s\n' `+shellQuote(in.WeedSHA256)+` "$pkg/target/bin/weed" | sha256sum -c -
 /usr/syno/bin/synopkg stop seaweedfs
 cp -p "$pkg/var/volume.yaml" "$pkg/var/volume.yaml.before-kubernetes-`+lab.ID()+`"
+test ! -e `+shellQuote(shareDir)+`
+/usr/syno/sbin/synoshare --add `+shellQuote(shareName)+` 'Isolated SeaweedFS qualification' `+shellQuote(shareDir)+` '' sc-seaweedfs '' 0 0
+/usr/syno/sbin/synoshare --get `+shellQuote(shareName)+`
 install -d -m 755 -o sc-seaweedfs `+shellQuote(dataDir)+`
 install -m 600 -o sc-seaweedfs `+shellQuote(tokenPath)+` "$pkg/var/kube/token"
 install -m 644 -o sc-seaweedfs `+shellQuote(caPath)+` "$pkg/var/kube/ca.crt"
