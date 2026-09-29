@@ -1,0 +1,10 @@
+# Build once; pass its tag as DSM_PEER_IMAGE and ID as DSM_PEER_IMAGE_ID.
+# Build-time package downloads do not grant the running lab any egress.
+FROM ubuntu@sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      bash ca-certificates coreutils curl dnsutils iproute2 iputils-ping jq \
+      netcat-openbsd openssh-client openssl procps sshpass tcpdump \
+    && rm -rf /var/lib/apt/lists/*
+RUN for tool in curl sha256sum ip ssh sshpass jq timeout; do command -v "$tool"; done
+ENTRYPOINT ["/bin/sleep"]
+CMD ["infinity"]

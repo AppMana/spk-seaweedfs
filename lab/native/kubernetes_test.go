@@ -219,6 +219,7 @@ func TestLiveDSMKubernetesJoin(t *testing.T) {
 		}()
 		wait("test", "-b", "/dev/disk/by-label/LCQUAL")
 		wait("test", "-b", "/dev/disk/by-id/virtio-lc-k0s-state")
+		run("sh", "-ec", "command -v curl; command -v sha256sum")
 		t.Log(string(run("sh", "-ec", string(diskScript), "controller-disk", "/var/lib/k0s", "/etc/fstab")))
 		run("sh", "-ec", `iface=$(ls /sys/class/net | grep -v '^lo$')
 test "$(printf '%s\n' "$iface" | wc -l)" = 1

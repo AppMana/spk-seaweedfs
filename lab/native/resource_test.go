@@ -34,12 +34,9 @@ sh /var/packages/seaweedfs/target/bin/register-service.sh
 systemctl is-active pkg-seaweedfs-volume.service
 /usr/syno/bin/synopkg status seaweedfs
 /usr/syno/bin/synopkg stop seaweedfs
-if systemctl is-active pkg-seaweedfs-volume.service; then
-  echo 'bounded daemon survived package stop' >&2
-  exit 1
-fi
-echo DSM_REGISTERED_SERVICE_CONTROL_PASS
 `)
+		assertDSMStopped(t, ctx, lab)
+		t.Log("DSM_REGISTERED_SERVICE_CONTROL_PASS")
 	})
 }
 

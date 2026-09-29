@@ -45,13 +45,36 @@ LOG_FILE="${SYNOPKG_PKGVAR}/log/weed.log"
 BOOTSTRAP_BIN="${SYNOPKG_PKGDEST}/bin/synology-volume-bootstrap"
 WEED_BIN="${SYNOPKG_PKGDEST}/bin/weed"
 
+CHILD=""
+trap 'if [ -n "$CHILD" ]; then kill "$CHILD" 2>/dev/null; fi; exit 0' TERM INT
+
 if [ "$IDX" = "0" ]; then
-  "${BOOTSTRAP_BIN}" \
-    --config "${SYNOPKG_PKGVAR}/volume.yaml" \
-    --out "${RUN_DIR}/argv" \
-    --tls-dir "${SYNOPKG_PKGVAR}/tls" \
-    --weed-bin-out "${WEED_BIN_FILE}" \
-    >>"${LOG_FILE}" 2>&1
+  # Boot-time network/API outages must not permanently kill the supervisor.
+  # Retry discovery before starting weed; never use stale or partial argv.
+  BACKOFF=1
+  while :; do
+    "${BOOTSTRAP_BIN}" \
+      --config "${SYNOPKG_PKGVAR}/volume.yaml" \
+      --out "${RUN_DIR}/argv" \
+      --tls-dir "${SYNOPKG_PKGVAR}/tls" \
+      --weed-bin-out "${WEED_BIN_FILE}" \
+      >>"${LOG_FILE}" 2>&1 &
+    CHILD=$!
+    if wait "$CHILD"; then
+      CHILD=""
+      break
+    else
+      STATUS=$?
+    fi
+    CHILD=""
+    echo "$(date -Is) run.sh[${IDX}]: bootstrap failed with status ${STATUS}; retrying in ${BACKOFF}s" >>"${LOG_FILE}"
+    sleep "$BACKOFF" &
+    CHILD=$!
+    wait "$CHILD"
+    CHILD=""
+    BACKOFF=$((BACKOFF * 2))
+    [ "$BACKOFF" -gt 60 ] && BACKOFF=60
+  done
 else
   n=0
   while [ ! -s "${ARGV_FILE}" ] && [ "$n" -lt 120 ]; do
@@ -101,9 +124,6 @@ done <"${ARGV_FILE}"
 # crash-loop is visible in weed.log instead of looking like a healthy service
 # that merely restarts a lot. A clean exit (status 0) is treated as an
 # intentional stop and is NOT restarted, so `synopkg stop` still works.
-CHILD=""
-trap 'if [ -n "$CHILD" ]; then kill "$CHILD" 2>/dev/null; fi; exit 0' TERM INT
-
 BACKOFF=1
 while :; do
   "${RUN_WEED}" volume -readBufferSizeMB=1 "$@" >>"${LOG_FILE}" 2>&1 &
