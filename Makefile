@@ -67,7 +67,7 @@ test-dsm-storage:
 
 test-dsm-package:
 	@test -n "$$DSM_PRIVATE_DIR" && test -n "$$DSM_VM_IMAGE" && test -n "$$DSM_PEER_IMAGE" && test -n "$$LABCONTAINERS_LABD"
-	cd $(REPO_ROOT)/lab/native && $(GO) test -v -count=1 -timeout 24m -run '^TestLiveDSMPackageInstallUpgrade$$' ./...
+	cd $(REPO_ROOT)/lab/native && $(GO) test -v -count=1 -timeout 34m -run '^TestLiveDSMPackageInstallUpgrade$$' ./...
 
 test-dsm-kubernetes:
 	@test -n "$$DSM_PRIVATE_DIR" && test -n "$$DSM_VM_IMAGE" && test -n "$$DSM_PEER_IMAGE" && test -n "$$LABCONTAINERS_LABD" && test -n "$$DSM_KUBERNETES_INPUTS"

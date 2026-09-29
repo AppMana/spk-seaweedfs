@@ -138,6 +138,13 @@ printf '%s\n' "$DSM_PASS" | sshpass -e ssh -o ConnectTimeout=5 -o StrictHostKeyC
 			if afterBoot != nil {
 				afterBoot(ctx, lab)
 			}
+			// Client.Close removes the VM container, not an orderly guest
+			// shutdown. Commit fixture writes before ordinary successful
+			// teardown so the next session gets the installed bytes, not an
+			// accidental power-loss experiment. Explicit Crash calls inside
+			// afterBoot still happen BEFORE this barrier; their durability
+			// assertions must pass without any harness-assisted flush.
+			dsmRoot(t, ctx, lab, "set -eu\ntest -f /root/seaweedfs-private-image\nsync\necho DSM_FIXTURE_FLUSHED\n")
 			return
 		}
 		if err != nil {
