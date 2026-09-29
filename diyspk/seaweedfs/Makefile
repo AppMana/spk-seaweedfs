@@ -1,6 +1,6 @@
 SPK_NAME = seaweedfs
 SPK_VERS = 4.47
-SPK_REV = 4
+SPK_REV = 6
 SPK_ICON = src/seaweedfs.png
 
 DEPENDS = cross/seaweedfs
@@ -20,12 +20,20 @@ WIZARDS_DIR = src/wizard
 STARTABLE = yes
 SERVICE_USER = auto
 SERVICE_SETUP = src/service-setup.sh
+SSS_SCRIPT = src/start-stop-status.sh
 SERVICE_WIZARD_SHARENAME = wizard_data_share
 FWPORTS = src/seaweedfs.sc
 
 POST_STRIP_TARGET = seaweedfs_extra_install
+POST_SERVICE_TARGET = seaweedfs_systemd_install
 
 include ../../mk/spksrc.spk.mk
+
+.PHONY: seaweedfs_systemd_install
+seaweedfs_systemd_install:
+	install -d -m 755 $(DSM_CONF_DIR)/systemd
+	install -m 644 src/pkg-seaweedfs-volume.service $(DSM_CONF_DIR)/systemd/pkg-seaweedfs-volume.service
+	install -m 755 ../../mk/spksrc.service.start-stop-status $(DSM_SCRIPTS_DIR)/volume-control
 
 # The bootstrap binary is built by the top-level Makefile (host Go,
 # pure Go, GOOS=linux GOARCH=amd64) and staged at src/bin/. We install

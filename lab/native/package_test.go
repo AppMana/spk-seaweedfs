@@ -75,14 +75,17 @@ sha256sum -c /tmp/seaweedfs-__RUN__-config.sha256
 test "$(stat -c '%u:%g:%a' "$pkg/var/volume.yaml")" = "$(cat /tmp/seaweedfs-__RUN__-config.stat)"
 printf '%s  %s\n' __WEED_SHA__ "$pkg/target/bin/weed" | sha256sum -c -
 "$pkg/target/bin/weed" version
-grep -Fx 'LimitNOFILE=65536' /etc/systemd/system/pkgctl-seaweedfs.service.d/appmana-limits.conf
-grep -Fx 'MemoryMax=5G' /etc/systemd/system/pkgctl-seaweedfs.service.d/appmana-limits.conf
-grep -Fx 'TasksMax=4096' /etc/systemd/system/pkgctl-seaweedfs.service.d/appmana-limits.conf
-systemctl show pkgctl-seaweedfs.service -p LimitNOFILE -p MemoryLimit -p MemoryMax -p TasksMax > /tmp/seaweedfs-__RUN__-limits
+unit=pkg-seaweedfs-volume.service
+cmp "$pkg/conf/systemd/$unit" "/usr/local/lib/systemd/system/$unit"
+# DSM systemd 219 uses MemoryLimit and per-UID RLIMIT_NPROC. The previous
+# drop-in's MemoryMax/TasksMax names are unsupported there, not protection.
+systemctl show "$unit" -p LimitNOFILE -p MemoryLimit -p LimitNPROC -p User -p Group > /tmp/seaweedfs-__RUN__-limits
 cat /tmp/seaweedfs-__RUN__-limits
 grep -Fx 'LimitNOFILE=65536' /tmp/seaweedfs-__RUN__-limits
-grep -E '^Memory(Max|Limit)=5368709120$' /tmp/seaweedfs-__RUN__-limits
-grep -Fx 'TasksMax=4096' /tmp/seaweedfs-__RUN__-limits
+grep -Fx 'MemoryLimit=5368709120' /tmp/seaweedfs-__RUN__-limits
+grep -Fx 'LimitNPROC=4096' /tmp/seaweedfs-__RUN__-limits
+grep -Fx 'User=sc-seaweedfs' /tmp/seaweedfs-__RUN__-limits
+grep -Fx 'Group=synocommunity' /tmp/seaweedfs-__RUN__-limits
 id sc-seaweedfs
 echo DSM_PACKAGE_INSTALL_UPGRADE_PASS
 `

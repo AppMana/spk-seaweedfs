@@ -18,17 +18,25 @@ import (
 )
 
 func dsmTopology(private, image, peerImage string) (*labv1.TopologySource, error) {
+	config, err := dsmConfig(private, image, peerImage)
+	if err != nil {
+		return nil, err
+	}
+	return clab.Source(config)
+}
+
+func dsmConfig(private, image, peerImage string) (*core.Config, error) {
 	if !filepath.IsAbs(private) || !strings.HasPrefix(filepath.Base(private), "dsm-private.") {
 		return nil, fmt.Errorf("explicit prepared private-image directory required")
 	}
-	return clab.Source(&core.Config{Topology: &types.Topology{
+	return &core.Config{Topology: &types.Topology{
 		Defaults: &types.NodeDefinition{NetworkMode: "none", ImagePullPolicy: "Never"},
 		Nodes: map[string]*types.NodeDefinition{
 			"dsm":  {Kind: "generic_vm", Image: image, Binds: []string{private + ":/private"}, Env: map[string]string{"DSM_QEMU_TRACE": os.Getenv("DSM_QEMU_TRACE")}},
 			"peer": {Kind: "linux", Image: peerImage, Entrypoint: "/bin/sleep", Cmd: "infinity"},
 		},
 		Links: []*links.LinkDefinition{{Link: &links.LinkBriefRaw{Endpoints: []string{"dsm:eth1", "peer:eth1"}}}},
-	}})
+	}}, nil
 }
 
 func TestDSMTopologyRejectsSeedDirectory(t *testing.T) {
@@ -48,6 +56,14 @@ func runDSM(t *testing.T, afterBoot func(context.Context, *client.Session)) {
 }
 
 func runDSMFor(t *testing.T, budget time.Duration, afterBoot func(context.Context, *client.Session)) {
+	runDSMScenario(t, budget, nil, afterBoot)
+}
+
+// A scenario extends native objects before launch; it cannot silently attach
+// the guest or host to a management/WAN network.
+type dsmScenario func(*core.Config, *labv1.LabSpec) (peerSetup string, err error)
+
+func runDSMScenario(t *testing.T, budget time.Duration, scenario dsmScenario, afterBoot func(context.Context, *client.Session)) {
 	t.Helper()
 	private := os.Getenv("DSM_PRIVATE_DIR")
 	if private == "" {
@@ -61,7 +77,19 @@ func runDSMFor(t *testing.T, budget time.Duration, afterBoot func(context.Contex
 	if err != nil {
 		t.Fatal(err)
 	}
-	source, err := dsmTopology(private, image, peerImage)
+	config, err := dsmConfig(private, image, peerImage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := &labv1.LabSpec{Nodes: map[string]*labv1.NodeExtension{"dsm": {Control: "container"}, "peer": {Control: "container"}}}
+	peerSetup := "ip link set eth1 up; ip addr add 192.0.2.10/24 dev eth1; test -z \"$(ip route show default)\""
+	if scenario != nil {
+		peerSetup, err = scenario(config, spec)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	spec.Topology, err = clab.Source(config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,11 +104,11 @@ func runDSMFor(t *testing.T, budget time.Duration, afterBoot func(context.Contex
 			t.Error("cleanup", err)
 		}
 	}()
-	lab, err := c.Start(ctx, &labv1.LabSpec{Topology: source, Nodes: map[string]*labv1.NodeExtension{"dsm": {Control: "container"}, "peer": {Control: "container"}}}, budget+2*time.Minute)
+	lab, err := c.Start(ctx, spec, budget+2*time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("session=%s evidence=%s", lab.ID(), lab.Artifacts())
+	t.Logf("session=%s socket=%s evidence=%s", lab.ID(), c.Socket(), lab.Artifacts())
 	defer func() {
 		cleanup, done := context.WithTimeout(context.Background(), 20*time.Second)
 		defer done()
@@ -89,7 +117,7 @@ func runDSMFor(t *testing.T, budget time.Duration, afterBoot func(context.Contex
 		}
 	}()
 	peer := lab.Node("peer")
-	r, err := peer.Exec(ctx, "sh", "-ec", "ip link set eth1 up; ip addr add 192.0.2.10/24 dev eth1; test -z \"$(ip route show default)\"")
+	r, err := peer.Exec(ctx, "sh", "-ec", peerSetup)
 	if err != nil || r.ExitCode != 0 {
 		t.Fatalf("peer setup: %v %v", r, err)
 	}

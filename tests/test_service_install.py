@@ -8,6 +8,32 @@ import unittest
 
 
 class ServiceInstall(unittest.TestCase):
+    def test_reinstall_preserves_retained_config_and_token(self):
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            target, var = work / 'target', work / 'var'
+            target.mkdir()
+            var.mkdir()
+            (var / 'kube').mkdir()
+            (var / 'volume_template.yaml').write_bytes(
+                (root / 'diyspk/seaweedfs/src/volume_template.yaml').read_bytes())
+            config = b'volume:\n  dir: /volume1/retained-live-data\n  max: 17\n'
+            token = b'retained-lab-only-token'
+            (var / 'volume.yaml').write_bytes(config)
+            (var / 'kube/token').write_bytes(token)
+            result = subprocess.run(['sh', '-ec', '. "$HOOK"; service_postinst'],
+                env={**os.environ, 'HOOK': str(root / 'diyspk/seaweedfs/src/service-setup.sh'),
+                     'SYNOPKG_PKGNAME': 'seaweedfs', 'SYNOPKG_PKGDEST': str(target),
+                     'SYNOPKG_PKGVAR': str(var), 'SYNOPKG_PKG_STATUS': 'INSTALL',
+                     'SC_USER': pwd.getpwuid(os.getuid()).pw_name,
+                     'wizard_token': 'replacement-must-not-be-used',
+                     'wizard_advertise_ip': '192.0.2.20', 'wizard_rack': 'lab'},
+                capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((var / 'volume.yaml').read_bytes(), config)
+            self.assertEqual((var / 'kube/token').read_bytes(), token)
+
     def test_fresh_install_uses_persisted_template(self):
         root = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as directory:
@@ -21,8 +47,6 @@ class ServiceInstall(unittest.TestCase):
                 (root / 'diyspk/seaweedfs/src/volume_template.yaml').read_bytes())
             result = subprocess.run(['sh', '-ec', '''
 . "$HOOK"
-# System unit writes need root and are covered by the real DSM test.
-install_resource_limits() { :; }
 service_postinst
 '''], env={**os.environ, 'HOOK': str(root / 'diyspk/seaweedfs/src/service-setup.sh'),
            'SYNOPKG_PKGNAME': 'seaweedfs', 'SYNOPKG_PKGDEST': str(target),

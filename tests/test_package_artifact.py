@@ -24,13 +24,26 @@ class PackageArtifactContract(unittest.TestCase):
         payload = [('bin/weed', elf, 0o755), ('bin/synology-volume-bootstrap', elf, 0o755),
                    ('bin/run.sh', b'#!/bin/sh\n', 0o755), ('var/volume_template.yaml', b'volume: {}', 0o644)]
         hooks = [('scripts/' + name, b'#!/bin/sh\n', 0o755) for name in
-                 ('preinst', 'postinst', 'preuninst', 'postuninst', 'preupgrade', 'postupgrade', 'start-stop-status')]
+                 ('preinst', 'postinst', 'preuninst', 'postuninst', 'preupgrade', 'postupgrade', 'start-stop-status', 'volume-control')]
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'package.spk'
             privilege = {'defaults': {'run-as': 'package'}}
-            def write(files, privileges=privilege):
+            unit = b'''[Service]
+User=sc-seaweedfs
+Group=synocommunity
+Slice=seaweedfs.slice
+LimitNOFILE=65536
+LimitNPROC=4096
+MemoryAccounting=true
+MemoryLimit=5G
+KillMode=control-group
+ExecStart=/var/packages/seaweedfs/scripts/volume-control start
+ExecStop=/var/packages/seaweedfs/scripts/volume-control stop
+'''
+            def write(files, privileges=privilege, service_unit=unit):
                 path.write_bytes(archive([('INFO', b'package="seaweedfs"\nversion="4.47-5"\narch="broadwellnk"\n', 0o644),
                                           ('conf/privilege', json.dumps(privileges).encode(), 0o644),
+                                          ('conf/systemd/pkg-seaweedfs-volume.service', service_unit, 0o644),
                                           ('package.tgz', archive(files, True), 0o644)] + hooks))
             write(payload)
             self.assertEqual(inspect_spk(path, '4.47-5')['version'], '4.47-5')
@@ -39,6 +52,13 @@ class PackageArtifactContract(unittest.TestCase):
                           [('bin/weed', elf, 0o644)] + payload[1:],
                           payload + [('../escape', b'x', 0o644)]]:
                 write(files)
+                with self.assertRaises(ValueError): inspect_spk(path, '4.47-5')
+
+            for bad_unit in [unit.replace(b'User=sc-seaweedfs', b'User=root'),
+                             unit.replace(b'MemoryLimit=5G', b'MemoryMax=5G'),
+                             unit.replace(b'LimitNPROC=4096', b'TasksMax=4096'),
+                             unit.replace(b'LimitNOFILE=65536', b'LimitNOFILE=4096')]:
+                write(payload, service_unit=bad_unit)
                 with self.assertRaises(ValueError): inspect_spk(path, '4.47-5')
             for privileges in [{'defaults': {'run-as': 'root'}},
                                {**privilege, 'ctrl-script': [{'action': 'postinst', 'run-as': 'root'}]},
