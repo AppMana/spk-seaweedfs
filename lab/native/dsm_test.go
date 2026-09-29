@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -95,6 +96,18 @@ func runDSMScenario(t *testing.T, budget time.Duration, scenario dsmScenario, af
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
+	// Containerlab's local-image lookup requires a named reference rather
+	// than a raw Docker config ID. Independently verify the named image's
+	// content identity before deployment; never silently accept a moved tag.
+	expectedPeer := os.Getenv("DSM_PEER_IMAGE_ID")
+	if len(expectedPeer) != 71 || !strings.HasPrefix(expectedPeer, "sha256:") {
+		t.Fatal("explicit DSM_PEER_IMAGE_ID (sha256 Docker image ID) required")
+	}
+	actualPeer, err := exec.CommandContext(ctx, "docker", "image", "inspect", "--format", "{{.Id}}", peerImage).Output()
+	if err != nil || strings.TrimSpace(string(actualPeer)) != expectedPeer {
+		t.Fatalf("DSM peer image identity mismatch: expected %s, got %q: %v", expectedPeer, actualPeer, err)
+	}
+	t.Logf("DSM peer image=%s ID=%s", peerImage, expectedPeer)
 	c, err := client.Launch(ctx, client.Options{LabdPath: daemon, StateDir: filepath.Join(private, "labd-state")})
 	if err != nil {
 		t.Fatal(err)
@@ -117,6 +130,12 @@ func runDSMScenario(t *testing.T, budget time.Duration, scenario dsmScenario, af
 		}
 	}()
 	peer := lab.Node("peer")
+	// Fail before boot/discovery work if an image lacks the workload tools.
+	// A VM-wrapper container is not necessarily a usable HTTP test client.
+	check, err := peer.Exec(ctx, "sh", "-ec", "for tool in curl sha256sum ip ssh sshpass; do command -v \"$tool\" || exit 1; done")
+	if err != nil || check.ExitCode != 0 {
+		t.Fatalf("DSM peer image lacks required tools: %v %v", check, err)
+	}
 	r, err := peer.Exec(ctx, "sh", "-ec", peerSetup)
 	if err != nil || r.ExitCode != 0 {
 		t.Fatalf("peer setup: %v %v", r, err)

@@ -19,6 +19,25 @@ also verify recovery after actual abrupt VM termination. Until this gate runs,
 leave `DSM_QUALIFIED_SPK_SHA256` unset; a successful SPK build is not DSM
 qualification. See the repository README for the artifact promotion procedure.
 
+## Labcontainers tools peer
+
+Use a tools container for the SSH and HTTP probes, not the outer container of
+a VM image. Build from the repository root and pin the resulting local image:
+
+```sh
+docker build -f lab/dsm/Dockerfile.peer -t labcontainers/dsm-peer:qualification lab/dsm
+export DSM_PEER_IMAGE=labcontainers/dsm-peer:qualification
+export DSM_PEER_IMAGE_ID=$(docker image inspect --format '{{.Id}}' "$DSM_PEER_IMAGE")
+```
+
+The image includes curl, checksums, SSH/sshpass, IP/DNS utilities, jq, tcpdump,
+and timeout. The harness verifies the named image against its explicit Docker
+image ID and checks required tools before guest-readiness polling. Containerlab
+requires the named reference for local-image lookup, not a bare image ID.
+Build-time package downloads do not enable runtime egress: the peer still uses
+`network_mode: none` and only the explicitly declared lab links. DSM and the
+Kubernetes backend remain real VMs; HTTP integrity probes run in the container.
+
 ## Historical procedure
 
 QEMU/KVM VM booting the RR loader on the containernet fabric. Every

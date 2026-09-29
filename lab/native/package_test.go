@@ -99,7 +99,6 @@ if ! /usr/syno/bin/synopkg start seaweedfs; then
 fi
 systemctl is-active "$unit"
 /usr/syno/bin/synopkg stop seaweedfs
-test "$(systemctl is-active "$unit" || true)" = inactive
 echo DSM_PACKAGE_INSTALL_UPGRADE_PASS
 `
 		script = strings.NewReplacer("__BASELINE__", shellQuote(basePath), "__CANDIDATE__", shellQuote(candidatePath),
@@ -110,6 +109,7 @@ echo DSM_PACKAGE_INSTALL_UPGRADE_PASS
 		if !strings.Contains(got, "DSM_PACKAGE_INSTALL_UPGRADE_PASS") {
 			t.Fatal("missing actual guest install/upgrade completion marker")
 		}
+		assertDSMStopped(t, ctx, lab)
 	})
 	// Start a new session against the same private disks. A successful
 	// installer exit is insufficient if ordinary lab teardown loses payloads.

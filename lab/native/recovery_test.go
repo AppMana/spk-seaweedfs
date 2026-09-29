@@ -17,10 +17,12 @@ import (
 // payloads, creates new FIDs, reinstalls packages, or repairs the mount/service.
 func verifyDSMDataRecovery(t *testing.T, ctx context.Context, lab *client.Session) {
 	t.Helper()
-	peer := lab.Node("peer")
+	// Use the isolated tools container for the HTTP workload. DSM and the
+	// Kubernetes backend remain real VMs; only the client probes avoid QGA.
+	workload := lab.Node("peer")
 	run := func(args ...string) []byte {
 		t.Helper()
-		out, err := peer.Commands().Exec(ctx, args...)
+		out, err := workload.Commands().Exec(ctx, args...)
 		if err != nil {
 			t.Fatalf("data probe %v: %s: %v", args, out, err)
 		}
@@ -31,7 +33,7 @@ func verifyDSMDataRecovery(t *testing.T, ctx context.Context, lab *client.Sessio
 		t.Fatal(err)
 	}
 	want := fmt.Sprintf("%x", sha256.Sum256(payload))
-	if err := peer.Put(ctx, "/run/qualification-data.bin", 0600, payload); err != nil {
+	if err := workload.Put(ctx, "/run/qualification-data.bin", 0600, payload); err != nil {
 		t.Fatal(err)
 	}
 	var assignment struct {
@@ -67,7 +69,7 @@ func verifyDSMDataRecovery(t *testing.T, ctx context.Context, lab *client.Sessio
 		defer cancel()
 		for {
 			// The original acknowledged object, not merely an open HTTP port.
-			result, err := peer.ExecWithTimeout(limit, 10*time.Second, "curl", "--max-time", "8", "-fsS", "-o", "/run/recovery-ready.bin", rawURL)
+			result, err := workload.ExecWithTimeout(limit, 10*time.Second, "curl", "--max-time", "8", "-fsS", "-o", "/run/recovery-ready.bin", rawURL)
 			if err == nil && result.ExitCode == 0 {
 				return
 			}
@@ -89,7 +91,7 @@ func verifyDSMDataRecovery(t *testing.T, ctx context.Context, lab *client.Sessio
 	if err := lab.Node("dsm").Crash(ctx); err != nil {
 		t.Fatal(err)
 	}
-	result, err := peer.ExecWithTimeout(ctx, 5*time.Second, "curl", "--max-time", "3", "-fsS", rawURL)
+	result, err := workload.ExecWithTimeout(ctx, 5*time.Second, "curl", "--max-time", "3", "-fsS", rawURL)
 	if err != nil {
 		t.Fatal("outage probe transport failed:", err)
 	}

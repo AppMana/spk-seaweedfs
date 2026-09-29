@@ -41,6 +41,7 @@ test-bootstrap:
 
 test-supervisor:
 	sh $(REPO_ROOT)/tests/run-supervisor.sh
+	sh $(REPO_ROOT)/tests/run-bootstrap-recovery.sh
 
 test-package-source:
 	sh $(REPO_ROOT)/tests/package-source.sh
@@ -68,6 +69,11 @@ test-dsm-storage:
 test-dsm-package:
 	@test -n "$$DSM_PRIVATE_DIR" && test -n "$$DSM_VM_IMAGE" && test -n "$$DSM_PEER_IMAGE" && test -n "$$LABCONTAINERS_LABD"
 	cd $(REPO_ROOT)/lab/native && $(GO) test -v -count=1 -timeout 34m -run '^TestLiveDSMPackageInstallUpgrade$$' ./...
+
+.PHONY: test-dsm-retention
+test-dsm-retention:
+	@test -n "$$DSM_PRIVATE_DIR" && test -n "$$DSM_VM_IMAGE" && test -n "$$DSM_PEER_IMAGE" && test -n "$$LABCONTAINERS_LABD"
+	cd $(REPO_ROOT)/lab/native && $(GO) test -v -count=1 -timeout 24m -run '^TestLiveDSMPackageUninstallRetention$$' ./...
 
 test-dsm-kubernetes:
 	@test -n "$$DSM_PRIVATE_DIR" && test -n "$$DSM_VM_IMAGE" && test -n "$$DSM_PEER_IMAGE" && test -n "$$LABCONTAINERS_LABD" && test -n "$$DSM_KUBERNETES_INPUTS"

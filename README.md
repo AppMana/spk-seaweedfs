@@ -70,7 +70,7 @@ so the already-tested bytes are reused; rerunning the build requires fresh
 qualification. This temporary promotion gate does not itself execute DSM tests.
 Never set the variable merely because source tests or package inspection pass.
 
-The current package definition is the **lab-only 4.47-9 candidate**, pinning
+The current package definition is the **lab-only 4.47-10 candidate**, pinning
 SeaweedFS `8ecd3e03f9fb7b4361cce12cd439520bfef00ca1`, including durable-index
 replay fixes and cgroup-derived memory/admission sizing. The old `4.40-4` SPK
 remains the upgrade-test baseline. Do not deploy or set
