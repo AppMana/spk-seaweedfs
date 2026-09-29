@@ -150,7 +150,11 @@ sudo sh /var/packages/seaweedfs/target/bin/register-service.sh
 sudo synopkg start seaweedfs
 ```
 
-Registration is idempotent and does not start a daemon. Normal Package Center
+Registration is idempotent and does not start a daemon. Run it after every
+install or upgrade: it flushes installed package files and service registration
+before reporting success, so an immediate power loss cannot rely on pending
+filesystem writes. If registration fails, do not treat installation as ready.
+Normal Package Center
 and `synopkg` start/stop controls then manage the bounded, unprivileged unit.
 The SPK alone is not a complete installation without registration. Its resource
 settings are:
