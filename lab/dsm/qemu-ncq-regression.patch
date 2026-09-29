@@ -1,0 +1,73 @@
+diff --git a/tests/qtest/ahci-test.c b/tests/qtest/ahci-test.c
+index 88ac6c6..8bd1fdc 100644
+--- a/tests/qtest/ahci-test.c
++++ b/tests/qtest/ahci-test.c
+@@ -1518,6 +1518,60 @@ static void test_ncq_simple(void)
+     ahci_shutdown(ahci);
+ }
+ 
++/* DSM probes SMART log page zero, which this model rejects. The next
++ * ordinary NCQ request must not inherit that command's ERR/ABRT status. */
++static void test_ncq_after_smart_error(void)
++{
++    AHCIQState *ahci = ahci_boot_and_enable(NULL);
++    uint8_t port = ahci_port_select(ahci);
++    uint8_t fis[20] = { 0x27, 0x80, 0xb0, 0xd5, 0, 0x4f, 0xc2,
++                       0, 0, 0, 0, 0, 1, 0, 0, 8 };
++    uint8_t commands[] = { WRITE_FPDMA_QUEUED, READ_FPDMA_QUEUED };
++    uint8_t tx[4096], rx[4096];
++    uint64_t buffer = ahci_alloc(ahci, sizeof(tx));
++    unsigned i;
++
++    generate_pattern(tx, sizeof(tx), AHCI_SECTOR_SIZE);
++    qtest_bufwrite(ahci->parent->qts, buffer, tx, sizeof(tx));
++    for (i = 0; i < G_N_ELEMENTS(commands); i++) {
++        AHCICommand *cmd = ahci_command_create(CMD_FLUSH_CACHE);
++        uint8_t slot;
++
++        ahci_port_clear(ahci, port);
++        ahci_command_commit(ahci, cmd, port);
++        slot = ahci_command_slot(cmd);
++        qtest_memwrite(ahci->parent->qts, ahci->port[port].ctba[slot],
++                      fis, sizeof(fis));
++        ahci_command_issue(ahci, cmd);
++        ASSERT_BIT_SET(ahci_px_rreg(ahci, port, AHCI_PX_IS), AHCI_PX_IS_TFES);
++        ASSERT_BIT_SET(ahci_px_rreg(ahci, port, AHCI_PX_TFD), 0x0401);
++        ahci_command_free(cmd);
++
++        /* Standard non-NCQ error recovery, without a device reset. */
++        ahci_px_clr(ahci, port, AHCI_PX_CMD, AHCI_PX_CMD_ST);
++        ASSERT_BIT_CLEAR(ahci_px_rreg(ahci, port, AHCI_PX_CMD), AHCI_PX_CMD_CR);
++        ahci_port_clear(ahci, port);
++        ahci_px_set(ahci, port, AHCI_PX_CMD, AHCI_PX_CMD_ST);
++        if (commands[i] == READ_FPDMA_QUEUED) {
++            qtest_memset(ahci->parent->qts, buffer, 0, sizeof(rx));
++        }
++        cmd = ahci_command_create(commands[i]);
++        ahci_command_adjust(cmd, 0, buffer, sizeof(tx), 4096);
++        ahci_command_commit(ahci, cmd, port);
++        ahci_command_issue_async(ahci, cmd);
++        /* TFES is sticky: check acceptance before waiting, so an unfixed
++         * model fails deterministically instead of hanging on stale PxCI. */
++        ASSERT_BIT_CLEAR(ahci_px_rreg(ahci, port, AHCI_PX_IS), AHCI_PX_IS_TFES);
++        ahci_command_wait(ahci, cmd);
++        ahci_command_verify(ahci, cmd);
++        ahci_command_free(cmd);
++    }
++    qtest_bufread(ahci->parent->qts, buffer, rx, sizeof(rx));
++    g_assert_cmpmem(tx, sizeof(tx), rx, sizeof(rx));
++    ahci_free(ahci, buffer);
++    ahci_shutdown(ahci);
++}
++
+ static int prepare_iso(size_t size, unsigned char **buf, char **name)
+ {
+     g_autofree char *cdrom_path = NULL;
+@@ -2032,6 +2086,7 @@ int main(int argc, char **argv)
+     qtest_add_func("/ahci/reset/pending_callback", test_reset_pending_callback);
+ 
+     qtest_add_func("/ahci/io/ncq/simple", test_ncq_simple);
++    qtest_add_func("/ahci/io/ncq/after-smart-error", test_ncq_after_smart_error);
+     qtest_add_func("/ahci/migrate/ncq/simple", test_migrate_ncq);
+     qtest_add_func("/ahci/io/ncq/retry", test_halted_ncq);
+     qtest_add_func("/ahci/migrate/ncq/halted", test_migrate_halted_ncq);

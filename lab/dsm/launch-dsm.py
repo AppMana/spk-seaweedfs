@@ -2,6 +2,7 @@
 import argparse
 import logging
 import os
+import tempfile
 from pathlib import Path
 
 import vrnetlab
@@ -19,6 +20,15 @@ class DSM(vrnetlab.VM):
         self.conn_mode = 'tc'
         self.qemu_args[self.qemu_args.index('-machine') + 1] = 'q35'
         self.qemu_args.extend(['-drive', 'file=/private/data.qcow2,format=qcow2,if=ide'])
+        if os.environ.get('DSM_QEMU_TRACE') == '1':
+            fd, path = tempfile.mkstemp(prefix='qemu-ide-', suffix='.trace', dir='/private')
+            os.close(fd)
+            # Debian's log trace backend uses -D; separate -trace options
+            # otherwise leave events on the subprocess stderr pipe.
+            self.qemu_args.extend(['-D', path])
+            for event in ('handle_cmd_fis_dump', 'process_ncq_command',
+                          'ahci_trigger_irq', 'ide_bus_exec_cmd', 'ncq_finish'):
+                self.qemu_args.extend(['-trace', 'enable=' + event])
         isolate_control_listeners(self)
 
     def gen_mgmt(self):
