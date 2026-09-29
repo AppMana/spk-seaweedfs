@@ -98,4 +98,17 @@ echo DSM_PACKAGE_INSTALL_UPGRADE_PASS
 			t.Fatal("missing actual guest install/upgrade completion marker")
 		}
 	})
+	// Start a new session against the same private disks. A successful
+	// installer exit is insufficient if ordinary lab teardown loses payloads.
+	// Do not reinstall or repair anything before this independent readback.
+	runDSM(t, func(ctx context.Context, lab *client.Session) {
+		dsmRoot(t, ctx, lab, `set -eu
+test -f /root/seaweedfs-private-image
+pkg=/var/packages/seaweedfs
+grep -Fx `+shellQuote(`version="`+candidateVersion+`"`)+` "$pkg/INFO"
+printf '%s  %s\n' `+shellQuote(weedHash)+` "$pkg/target/bin/weed" | sha256sum -c -
+"$pkg/target/bin/weed" version
+echo DSM_PACKAGE_SECOND_BOOT_PASS
+`)
+	})
 }

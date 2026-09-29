@@ -5,8 +5,23 @@ on:
     branches: [main]
   pull_request:
   workflow_call:
+  workflow_dispatch:
 
 jobs:
+  native-harness-contracts:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: lab/native/go.mod
+          cache-dependency-path: lab/native/go.sum
+      # These contracts need no daemon, VM images, credentials or KVM.
+      # They do not substitute for the opt-in real DSM lifecycle gates.
+      - name: Check native topology and artifact contracts under the race detector
+        working-directory: lab/native
+        run: go test -race -count=1 -run '^TestDSM' ./...
+
   bootstrap-tests:
     runs-on: ubuntu-24.04
     steps:
