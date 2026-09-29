@@ -83,6 +83,11 @@ test-dsm-kubernetes:
 	@test -n "$$DSM_PRIVATE_DIR" && test -n "$$DSM_VM_IMAGE" && test -n "$$DSM_PEER_IMAGE" && test -n "$$LABCONTAINERS_LABD" && test -n "$$DSM_KUBERNETES_INPUTS"
 	cd $(REPO_ROOT)/lab/native && $(GO) test -v -count=1 -timeout 30m -run '^TestLiveDSMKubernetesJoin$$' ./...
 
+.PHONY: test-dsm-data-upgrade
+test-dsm-data-upgrade:
+	@test -n "$$DSM_PRIVATE_DIR" && test -n "$$DSM_KUBERNETES_INPUTS" && test -n "$$DSM_BASELINE_SPK" && test -n "$$DSM_CANDIDATE_SPK"
+	cd $(REPO_ROOT)/lab/native && $(GO) test -v -count=1 -timeout 30m -run '^TestLiveDSMKubernetesDataUpgrade$$' ./...
+
 test: test-bootstrap test-supervisor test-package-source test-package-metadata test-runner-contracts test-native
 
 # Stage our authoritative source into the spksrc submodule. Recreate each
