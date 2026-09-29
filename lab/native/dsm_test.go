@@ -24,7 +24,7 @@ func dsmTopology(private, image, peerImage string) (*labv1.TopologySource, error
 	return clab.Source(&core.Config{Topology: &types.Topology{
 		Defaults: &types.NodeDefinition{NetworkMode: "none", ImagePullPolicy: "Never"},
 		Nodes: map[string]*types.NodeDefinition{
-			"dsm":  {Kind: "generic_vm", Image: image, Binds: []string{private + ":/private"}},
+			"dsm":  {Kind: "generic_vm", Image: image, Binds: []string{private + ":/private"}, Env: map[string]string{"DSM_QEMU_TRACE": os.Getenv("DSM_QEMU_TRACE")}},
 			"peer": {Kind: "linux", Image: peerImage, Entrypoint: "/bin/sleep", Cmd: "infinity"},
 		},
 		Links: []*links.LinkDefinition{{Link: &links.LinkBriefRaw{Endpoints: []string{"dsm:eth1", "peer:eth1"}}}},
@@ -40,6 +40,11 @@ func TestDSMTopologyRejectsSeedDirectory(t *testing.T) {
 }
 
 func TestLiveDSMPrivateBoot(t *testing.T) {
+	runDSM(t, nil)
+}
+
+func runDSM(t *testing.T, afterBoot func(context.Context, *client.Session)) {
+	t.Helper()
 	private := os.Getenv("DSM_PRIVATE_DIR")
 	if private == "" {
 		t.Skip("requires explicit prepared private DSM disks")
@@ -98,6 +103,9 @@ printf '%s\n' "$DSM_PASS" | sshpass -e ssh -o ConnectTimeout=5 -o StrictHostKeyC
 		done()
 		if err == nil && r.ExitCode == 0 && strings.Contains(string(r.Stdout), "DSM_AUTHENTICATED_BOOT") {
 			t.Log(string(r.Stdout))
+			if afterBoot != nil {
+				afterBoot(ctx, lab)
+			}
 			return
 		}
 		if err != nil {

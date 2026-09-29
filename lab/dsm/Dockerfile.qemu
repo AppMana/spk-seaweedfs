@@ -1,0 +1,6 @@
+ARG DSM_BASE=labcontainers/dsm:seaweedfs-816233a-trace
+FROM ${DSM_BASE}
+# Explicit local named contexts supplied by build-qemu.sh; never fetch an
+# unpinned emulator image. Runtime SDK/daemon/guest-helper remain unchanged.
+COPY --from=qemu-build /qemu-system-x86_64 /usr/local/bin/qemu-system-x86_64
+COPY --from=qemu-source /pc-bios/ /usr/local/share/qemu/

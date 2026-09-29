@@ -1,0 +1,16 @@
+diff --git a/hw/ide/ahci.c b/hw/ide/ahci.c
+index 1303c21..615d643 100644
+--- a/hw/ide/ahci.c
++++ b/hw/ide/ahci.c
+@@ -1116,6 +1116,11 @@ static void process_ncq_command(AHCIState *s, int port, const uint8_t *cmd_fis,
+      * (Once the NCQ command is COMPLETED, the device will send a SDB FIS with
+      * the interrupt bit set, which will clear PxSACT and raise an interrupt.)
+      */
++    /* Accepting a new command must not replay an earlier non-NCQ error
++     * (for example an unsupported SMART log page) in its acceptance FIS,
++     * or leave PxCI set because ahci_clear_cmd_issue sees stale ERR. */
++    ad->port.ifs[0].status = READY_STAT | SEEK_STAT;
++    ad->port.ifs[0].error = 0;
+     ahci_clear_cmd_issue(ad, slot);
+ 
+     /*
