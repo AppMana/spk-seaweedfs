@@ -168,6 +168,11 @@ func TestDSMKubernetesTopologyIsExplicit(t *testing.T) {
 // This is the real Kubernetes backend for DSM join/lifecycle tests, not a mock
 // API or a kind cluster. Successful API setup alone is not NAS qualification.
 func TestLiveDSMKubernetesJoin(t *testing.T) {
+	runDSMKubernetesJoin(t, nil)
+}
+
+func runDSMKubernetesJoin(t *testing.T, upgrade *dsmPackageUpgrade) {
+	t.Helper()
 	path := os.Getenv("DSM_KUBERNETES_INPUTS")
 	if path == "" {
 		t.Skip("requires explicit pinned offline Kubernetes inputs")
@@ -192,6 +197,9 @@ func TestLiveDSMKubernetesJoin(t *testing.T) {
 	if in.SPKVersion == "" || len(in.WeedSHA256) != 64 || strings.Trim(in.WeedSHA256, "0123456789abcdef") != "" {
 		t.Fatal("explicit installed package version and weed hash required")
 	}
+	if upgrade != nil && (in.SPKVersion == upgrade.version || in.WeedSHA256 == upgrade.weedHash) {
+		t.Fatal("data upgrade requires distinct baseline/candidate package versions and binaries")
+	}
 	for path, hash := range map[string]string{in.Media: in.MediaSHA256, in.DiskScript: in.DiskScriptSHA256} {
 		if err := verifyDiskFile(path, hash); err != nil {
 			t.Fatal(err)
@@ -202,6 +210,11 @@ func TestLiveDSMKubernetesJoin(t *testing.T) {
 		t.Fatal(err)
 	}
 	runDSMScenario(t, 25*time.Minute, clusterScenario(in), func(ctx context.Context, lab *client.Session) {
+		initialVersion, initialHash := in.SPKVersion, in.WeedSHA256
+		if upgrade != nil {
+			upgrade.installBaseline(t, ctx, lab)
+			initialVersion, initialHash = upgrade.version, upgrade.weedHash
+		}
 		node := lab.Node("cluster")
 		run := func(args ...string) []byte {
 			t.Helper()
@@ -359,8 +372,8 @@ trap 'result=$?; trap - EXIT; if [ "$result" != 0 ]; then
   tail -30 /var/log/packages/seaweedfs.log || true
 fi; exit "$result"' EXIT
 pkg=/var/packages/seaweedfs
-grep -Fx `+shellQuote(`version="`+in.SPKVersion+`"`)+` "$pkg/INFO"
-printf '%s  %s\n' `+shellQuote(in.WeedSHA256)+` "$pkg/target/bin/weed" | sha256sum -c -
+grep -Fx `+shellQuote(`version="`+initialVersion+`"`)+` "$pkg/INFO"
+printf '%s  %s\n' `+shellQuote(initialHash)+` "$pkg/target/bin/weed" | sha256sum -c -
 /usr/syno/bin/synopkg stop seaweedfs
 cp -p "$pkg/var/volume.yaml" "$pkg/var/volume.yaml.before-kubernetes-`+lab.ID()+`"
 test ! -e `+shellQuote(shareDir)+`
@@ -380,7 +393,8 @@ sleep 5
 tail -40 "$pkg/var/log/weed.log"
 `)
 		wait("sh", "-ec", "curl -fsS http://192.0.2.30:9333/dir/status | grep -F '192.0.2.20:8080'")
-		dsmRoot(t, ctx, lab, `set -eu
+		assertResources := func() {
+			dsmRoot(t, ctx, lab, `set -eu
 uid=$(id -u sc-seaweedfs)
 found=0
 for pid in $(pidof weed); do
@@ -404,7 +418,16 @@ done
 test "$found" = 1
 grep -E 'memory limits: available [1-9][0-9]* .*GOMEMLIMIT env false, Go memory limit [1-9][0-9]* \(set true\), upload admission [1-9][0-9]* MiB \(auto true\), download admission [1-9][0-9]* MiB \(auto true\)' /var/packages/seaweedfs/var/log/weed.log
 `)
+		}
+		if upgrade == nil {
+			assertResources()
+			verifyDSMDataRecovery(t, ctx, lab)
+		} else {
+			verifyDSMDataRecoveryAcross(t, ctx, lab, func() {
+				upgrade.apply(t, ctx, lab, in.SPKVersion, in.WeedSHA256)
+			})
+			assertResources()
+		}
 		t.Log("DSM_KUBERNETES_JOIN_PASS: authenticated discovery, real topology membership and running-process resource limits")
-		verifyDSMDataRecovery(t, ctx, lab)
 	})
 }

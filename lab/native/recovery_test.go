@@ -16,6 +16,12 @@ import (
 // Only write before the first verification. Restart/recovery never reseeds
 // payloads, creates new FIDs, reinstalls packages, or repairs the mount/service.
 func verifyDSMDataRecovery(t *testing.T, ctx context.Context, lab *client.Session) {
+	verifyDSMDataRecoveryAcross(t, ctx, lab, nil)
+}
+
+// transition is an actual package upgrade between original-data verification
+// and readback. It must not create, replace or repair any workload objects.
+func verifyDSMDataRecoveryAcross(t *testing.T, ctx context.Context, lab *client.Session, transition func()) {
 	t.Helper()
 	defer func() {
 		if !t.Failed() {
@@ -96,6 +102,11 @@ sha256sum /var/packages/seaweedfs/var/volume.yaml /var/packages/seaweedfs/var/ku
 		}
 	}
 	verify("before-restart")
+	if transition != nil {
+		transition()
+		ready()
+		verify("after-package-upgrade")
+	}
 	dsmRoot(t, ctx, lab, "set -eu\ntest -f /root/seaweedfs-private-image\n/usr/syno/bin/synopkg restart seaweedfs\n")
 	ready()
 	verify("after-package-restart")
