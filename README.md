@@ -70,9 +70,9 @@ so the already-tested bytes are reused; rerunning the build requires fresh
 qualification. This temporary promotion gate does not itself execute DSM tests.
 Never set the variable merely because source tests or package inspection pass.
 
-The current package definition is the **lab-only 4.47-1 candidate**, pinning
-SeaweedFS `3132c4f2ad1315f73ab69b4f0a711879ead73212`; its application code is
-unchanged from the Windows/Linux reliability candidate. The old `4.40-4` SPK
+The current package definition is the **lab-only 4.47-2 candidate**, pinning
+SeaweedFS `5a21ae355b33eec636d8027dcfc0eeb6e8fdd27a`, the mixed-platform CSI-tested
+revision including durable-index replay fixes. The old `4.40-4` SPK
 remains the upgrade-test baseline. Do not deploy or set
 `DSM_QUALIFIED_SPK_SHA256` until the exact candidate artifact has passed real
 DSM install, restart/crash, upgrade, supported rollback, and data-preserving
