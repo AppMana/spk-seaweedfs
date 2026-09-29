@@ -23,4 +23,11 @@ systemctl daemon-reload
 systemctl enable "$unit"
 systemctl daemon-reload
 systemctl show pkgctl-seaweedfs.service -p Requires | tr ' =' '\n' | grep -qx "$unit"
+# DSM's installer can return while package payloads on /volume1 and native
+# units/links on the system filesystem are still dirty. A power cut then left
+# INFO at the new version, the appstore target missing and the unit zero bytes.
+# Registration is the final administrator-side install/upgrade boundary, not
+# a request-path operation. Flush both filesystems before reporting success.
+# Do not put this barrier in a workload test or after its data writes.
+sync
 echo 'DSM_SERVICE_REGISTERED: use synopkg start/stop seaweedfs for normal control'
