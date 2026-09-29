@@ -1,4 +1,5 @@
 import io
+import json
 from pathlib import Path
 import tarfile
 import tempfile
@@ -26,8 +27,10 @@ class PackageArtifactContract(unittest.TestCase):
                  ('preinst', 'postinst', 'preuninst', 'postuninst', 'preupgrade', 'postupgrade', 'start-stop-status')]
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'package.spk'
-            def write(files):
+            privilege = {'defaults': {'run-as': 'package'}}
+            def write(files, privileges=privilege):
                 path.write_bytes(archive([('INFO', b'package="seaweedfs"\nversion="4.47-5"\narch="broadwellnk"\n', 0o644),
+                                          ('conf/privilege', json.dumps(privileges).encode(), 0o644),
                                           ('package.tgz', archive(files, True), 0o644)] + hooks))
             write(payload)
             self.assertEqual(inspect_spk(path, '4.47-5')['version'], '4.47-5')
@@ -36,6 +39,12 @@ class PackageArtifactContract(unittest.TestCase):
                           [('bin/weed', elf, 0o644)] + payload[1:],
                           payload + [('../escape', b'x', 0o644)]]:
                 write(files)
+                with self.assertRaises(ValueError): inspect_spk(path, '4.47-5')
+            for privileges in [{'defaults': {'run-as': 'root'}},
+                               {**privilege, 'ctrl-script': [{'action': 'postinst', 'run-as': 'root'}]},
+                               {**privilege, 'ctrl-script': [{'action': 'postupgrade', 'run-as': 'root'}]},
+                               {**privilege, 'ctrl-script': [{'action': 'start', 'run-as': 'root'}]}]:
+                write(payload, privileges)
                 with self.assertRaises(ValueError): inspect_spk(path, '4.47-5')
 
 

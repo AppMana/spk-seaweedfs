@@ -50,6 +50,12 @@ def inspect_spk(path, version):
             contents(outer, entries, name)
             if not entries[name].mode & 0o111:
                 raise ValueError('non-executable package hook: ' + name)
+        privilege = json.loads(contents(outer, entries, 'conf/privilege'))
+        if privilege.get('defaults', {}).get('run-as') != 'package':
+            raise ValueError('daemon must retain unprivileged package identity')
+        controls = privilege.get('ctrl-script', [])
+        if any(item.get('run-as') != 'package' for item in controls):
+            raise ValueError('DSM7 third-party package hooks must remain unprivileged')
         payload = contents(outer, entries, 'package.tgz')
     hashes = {}
     with tarfile.open(fileobj=io.BytesIO(payload), mode='r:gz') as package:

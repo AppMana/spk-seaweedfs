@@ -78,8 +78,9 @@ service_prestart() {
 
 service_postinst() {
     install -d -m 700 -o "${SC_USER:-sc-${SYNOPKG_PKGNAME}}" "${KUBE_DIR}" "${TLS_DIR}" "${RUN_DIR}" "${OCI_DIR}"
-    install -d -m 755 "${SYNOPKG_PKGVAR}/log"
+    install -d -m 755 -o "${SC_USER:-sc-${SYNOPKG_PKGNAME}}" "${SYNOPKG_PKGVAR}/log"
     : > "${LOG_FILE}"
+    chown "${SC_USER:-sc-${SYNOPKG_PKGNAME}}" "${LOG_FILE}"
 
     install_resource_limits
 
@@ -137,7 +138,7 @@ service_postinst() {
             -e "s|@MTLS_SECRET@|${wizard_mtls_secret}|g" \
             -e "s|@WEED_IMAGE@|${wizard_weed_image}|g" \
             -e "s|@WEED_PLAIN_HTTP@|${WEED_PLAIN_HTTP}|g" \
-            "${SYNOPKG_PKGDEST}/var/volume_template.yaml" > "${VOLUME_YAML}"
+            "${SYNOPKG_PKGVAR}/volume_template.yaml" > "${VOLUME_YAML}"
 
         chown "${SC_USER:-sc-${SYNOPKG_PKGNAME}}" "${VOLUME_YAML}"
         chmod 600 "${VOLUME_YAML}"
