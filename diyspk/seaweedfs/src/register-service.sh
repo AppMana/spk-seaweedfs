@@ -15,6 +15,8 @@ unit=pkg-seaweedfs-volume.service
 test -f "$pkg/INFO"
 cmp "$pkg/conf/systemd/$unit" "/usr/local/lib/systemd/system/$unit"
 grep -qx 'Before=pkgctl-seaweedfs.service' "$pkg/conf/systemd/$unit"
+grep -qx 'Requires=pkg-volume.target' "$pkg/conf/systemd/$unit"
+grep -qx 'After=pkg-volume.target' "$pkg/conf/systemd/$unit"
 grep -qx 'RequiredBy=pkgctl-seaweedfs.service' "$pkg/conf/systemd/$unit"
 grep -qx 'User=sc-seaweedfs' "$pkg/conf/systemd/$unit"
 systemctl daemon-reload

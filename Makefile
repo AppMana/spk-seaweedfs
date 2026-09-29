@@ -70,7 +70,11 @@ test-dsm-package:
 	@test -n "$$DSM_PRIVATE_DIR" && test -n "$$DSM_VM_IMAGE" && test -n "$$DSM_PEER_IMAGE" && test -n "$$LABCONTAINERS_LABD"
 	cd $(REPO_ROOT)/lab/native && $(GO) test -v -count=1 -timeout 34m -run '^TestLiveDSMPackageInstallUpgrade$$' ./...
 
-.PHONY: test-dsm-retention
+.PHONY: test-dsm-fresh test-dsm-retention
+test-dsm-fresh:
+	@test -n "$$DSM_PRIVATE_DIR" && test -n "$$DSM_VM_IMAGE" && test -n "$$DSM_PEER_IMAGE" && test -n "$$LABCONTAINERS_LABD"
+	cd $(REPO_ROOT)/lab/native && $(GO) test -v -count=1 -timeout 24m -run '^TestLiveDSMPackageFreshInstall$$' ./...
+
 test-dsm-retention:
 	@test -n "$$DSM_PRIVATE_DIR" && test -n "$$DSM_VM_IMAGE" && test -n "$$DSM_PEER_IMAGE" && test -n "$$LABCONTAINERS_LABD"
 	cd $(REPO_ROOT)/lab/native && $(GO) test -v -count=1 -timeout 24m -run '^TestLiveDSMPackageUninstallRetention$$' ./...
