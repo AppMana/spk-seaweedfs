@@ -52,7 +52,16 @@ test-package-metadata:
 test-runner-contracts:
 	python3 -m unittest discover -s $(REPO_ROOT)/tests -p 'test_*.py' -v
 
-test: test-bootstrap test-supervisor test-package-source test-package-metadata test-runner-contracts
+.PHONY: test-native test-dsm-live
+test-native:
+	cd $(REPO_ROOT)/lab/native && $(GO) test -race -run '^TestDSM' ./...
+
+# Requires prepared private disks and explicit matched runtime/image inputs.
+test-dsm-live:
+	@test -n "$$DSM_PRIVATE_DIR" && test -n "$$DSM_VM_IMAGE" && test -n "$$DSM_PEER_IMAGE" && test -n "$$LABCONTAINERS_LABD"
+	cd $(REPO_ROOT)/lab/native && $(GO) test -v -count=1 -timeout 14m -run '^TestLiveDSMPrivateBoot$$' ./...
+
+test: test-bootstrap test-supervisor test-package-source test-package-metadata test-runner-contracts test-native
 
 # Stage our authoritative source into the spksrc submodule. Recreate each
 # destination so deleted source files cannot linger in the package context.

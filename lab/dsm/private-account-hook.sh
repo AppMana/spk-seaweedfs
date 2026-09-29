@@ -7,6 +7,7 @@ test -f /root/seaweedfs-lab-account.env
 case "$DSM_USER" in swlab????????????) ;; *) exit 1 ;; esac
 test "$(cat /root/seaweedfs-private-image)" = "$DSM_USER"
 test -n "$DSM_PASS"
+/usr/local/etc/rc.d/seaweedfs-lab-network.sh start
 if /usr/syno/sbin/synouser --get "$DSM_USER" >/dev/null 2>&1; then
   /usr/syno/sbin/synouser --setpw "$DSM_USER" "$DSM_PASS"
 else

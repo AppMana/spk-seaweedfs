@@ -44,6 +44,9 @@ done < <("${guestfish[@]}" --ro run : list-md-devices)
   : chmod 0600 /root/seaweedfs-private-image \
   : upload "$script_dir/private-account-hook.sh" /usr/rr/once.d/00-seaweedfs-lab-account.sh \
   : chmod 0700 /usr/rr/once.d/00-seaweedfs-lab-account.sh \
+  : mkdir-p /usr/local/etc/rc.d \
+  : upload "$script_dir/private-network.sh" /usr/local/etc/rc.d/seaweedfs-lab-network.sh \
+  : chmod 0700 /usr/local/etc/rc.d/seaweedfs-lab-network.sh \
   : sync
 sha256sum --check --status "$run_dir/seeds.sha256"
 printf 'DSM_PRIVATE_IMAGE_PREPARED:%s\n' "$run_dir"
