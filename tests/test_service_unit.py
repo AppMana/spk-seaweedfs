@@ -5,6 +5,16 @@ import unittest
 
 
 class ServiceUnit(unittest.TestCase):
+    def test_native_daemon_waits_for_dsm_package_storage(self):
+        # Real power-loss boot reproduced the daemon starting five seconds
+        # before pkg-volume.target. Parent ordering is NOT inherited by a
+        # RequiredBy child: both activation and ordering must be explicit.
+        root = Path(__file__).resolve().parents[1]
+        config = configparser.ConfigParser(interpolation=None, strict=False)
+        config.read(root / 'diyspk/seaweedfs/src/pkg-seaweedfs-volume.service')
+        self.assertIn('pkg-volume.target', config['Unit'].get('Requires', '').split())
+        self.assertIn('pkg-volume.target', config['Unit'].get('After', '').split())
+
     def test_unprivileged_unit_has_aggregate_memory_and_uid_task_limits(self):
         root = Path(__file__).resolve().parents[1]
         unit = root / 'diyspk/seaweedfs/src/pkg-seaweedfs-volume.service'

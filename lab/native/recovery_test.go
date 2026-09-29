@@ -17,6 +17,21 @@ import (
 // payloads, creates new FIDs, reinstalls packages, or repairs the mount/service.
 func verifyDSMDataRecovery(t *testing.T, ctx context.Context, lab *client.Session) {
 	t.Helper()
+	defer func() {
+		if !t.Failed() {
+			return
+		}
+		// Retain guest boot/service evidence before lab teardown. This is
+		// read-only: never restart or repair a failed recovery to pass it.
+		debug, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		dsmRoot(t, debug, lab, `set -u
+systemctl show pkg-volume.target pkg-seaweedfs-volume.service -p Id -p ActiveEnterTimestamp -p ExecMainStartTimestamp -p ActiveState -p Result
+journalctl -b -u pkg-seaweedfs-volume.service --no-pager -n 60
+tail -40 /var/packages/seaweedfs/var/log/weed.log
+sha256sum /var/packages/seaweedfs/var/volume.yaml /var/packages/seaweedfs/var/kube/token /var/packages/seaweedfs/var/kube/ca.crt
+`)
+	}()
 	// Use the isolated tools container for the HTTP workload. DSM and the
 	// Kubernetes backend remain real VMs; only the client probes avoid QGA.
 	workload := lab.Node("peer")
@@ -75,7 +90,7 @@ func verifyDSMDataRecovery(t *testing.T, ctx context.Context, lab *client.Sessio
 			}
 			select {
 			case <-limit.Done():
-				t.Fatalf("DSM original object did not recover: %v", err)
+				t.Fatalf("DSM original object did not recover: result=%+v error=%v", result, err)
 			case <-time.After(3 * time.Second):
 			}
 		}
@@ -84,6 +99,7 @@ func verifyDSMDataRecovery(t *testing.T, ctx context.Context, lab *client.Sessio
 	dsmRoot(t, ctx, lab, "set -eu\ntest -f /root/seaweedfs-private-image\n/usr/syno/bin/synopkg restart seaweedfs\n")
 	ready()
 	verify("after-package-restart")
+	configHash := strings.TrimSpace(dsmRoot(t, ctx, lab, "sha256sum /var/packages/seaweedfs/var/volume.yaml /var/packages/seaweedfs/var/kube/token /var/packages/seaweedfs/var/kube/ca.crt"))
 	boot := strings.TrimSpace(dsmRoot(t, ctx, lab, "cat /proc/sys/kernel/random/boot_id"))
 	if len(boot) != 36 {
 		t.Fatalf("invalid pre-crash boot identity %q", boot)
@@ -105,6 +121,9 @@ func verifyDSMDataRecovery(t *testing.T, ctx context.Context, lab *client.Sessio
 	after := strings.TrimSpace(dsmRoot(t, ctx, lab, "cat /proc/sys/kernel/random/boot_id"))
 	if len(after) != 36 || after == boot {
 		t.Fatalf("crash did not yield new guest boot: %q -> %q", boot, after)
+	}
+	if recovered := strings.TrimSpace(dsmRoot(t, ctx, lab, "sha256sum /var/packages/seaweedfs/var/volume.yaml /var/packages/seaweedfs/var/kube/token /var/packages/seaweedfs/var/kube/ca.crt")); recovered != configHash {
+		t.Fatalf("provisioned configuration changed across power loss: before=%s after=%s", configHash, recovered)
 	}
 	verify("after-abrupt-vm-crash")
 	dsmRoot(t, ctx, lab, `set -eu

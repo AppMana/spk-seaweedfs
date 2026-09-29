@@ -63,6 +63,9 @@ def inspect_spk(path, version):
         for section, key in [('Unit', 'Before'), ('Install', 'RequiredBy')]:
             if not unit.has_section(section) or unit[section].get(key) != 'pkgctl-seaweedfs.service':
                 raise ValueError('missing bounded daemon dependency registration/order')
+        for key in ('Requires', 'After'):
+            if 'pkg-volume.target' not in unit['Unit'].get(key, '').split():
+                raise ValueError('missing DSM package-volume boot dependency/order')
         required = {'User': 'sc-seaweedfs', 'Group': 'synocommunity', 'Slice': 'seaweedfs.slice',
                     'LimitNOFILE': '65536', 'LimitNPROC': '4096', 'MemoryAccounting': 'true',
                     'MemoryLimit': '5G', 'KillMode': 'control-group',

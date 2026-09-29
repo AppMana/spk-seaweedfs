@@ -31,6 +31,8 @@ class PackageArtifactContract(unittest.TestCase):
             privilege = {'defaults': {'run-as': 'package'}}
             unit = b'''[Unit]
 Before=pkgctl-seaweedfs.service
+Requires=pkg-volume.target
+After=pkg-volume.target
 [Install]
 RequiredBy=pkgctl-seaweedfs.service
 [Service]
@@ -60,6 +62,8 @@ ExecStop=/var/packages/seaweedfs/scripts/volume-control stop
                 with self.assertRaises(ValueError): inspect_spk(path, '4.47-5')
 
             for bad_unit in [unit.replace(b'Before=pkgctl-seaweedfs.service', b'Before=unrelated.service'),
+                             unit.replace(b'Requires=pkg-volume.target', b'Requires=unrelated.target'),
+                             unit.replace(b'After=pkg-volume.target', b'After=unrelated.target'),
                              unit.replace(b'RequiredBy=pkgctl-seaweedfs.service', b'RequiredBy=unrelated.service'),
                              unit.replace(b'User=sc-seaweedfs', b'User=root'),
                              unit.replace(b'MemoryLimit=5G', b'MemoryMax=5G'),

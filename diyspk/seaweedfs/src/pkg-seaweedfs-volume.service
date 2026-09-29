@@ -2,6 +2,10 @@
 Description=SeaweedFS volume servers
 PartOf=pkgctl-seaweedfs.service
 Before=pkgctl-seaweedfs.service
+# RequiredBy does not inherit the parent's storage ordering. Both package
+# payload and state are symlinks onto DSM volumes that are absent early in boot.
+Requires=pkg-volume.target
+After=pkg-volume.target
 
 [Service]
 Type=oneshot

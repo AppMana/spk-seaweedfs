@@ -346,6 +346,10 @@ install -d -m 755 -o sc-seaweedfs `+shellQuote(dataDir)+`
 install -m 600 -o sc-seaweedfs `+shellQuote(tokenPath)+` "$pkg/var/kube/token"
 install -m 644 -o sc-seaweedfs `+shellQuote(caPath)+` "$pkg/var/kube/ca.crt"
 install -m 600 -o sc-seaweedfs `+shellQuote(configPath)+` "$pkg/var/volume.yaml"
+# Persist fixture provisioning BEFORE starting the daemon or writing the
+# workload. Otherwise power loss can restore the seed's empty config instead
+# of exercising acknowledged-data recovery. Never move this after data writes.
+sync
 /usr/syno/bin/synopkg start seaweedfs
 sleep 5
 /usr/syno/bin/synopkg status seaweedfs
