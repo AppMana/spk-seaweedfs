@@ -1,0 +1,122 @@
+package native
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	labv1 "github.com/appmana/labcontainers/api/v1"
+	"github.com/appmana/labcontainers/pkg/client"
+	clab "github.com/appmana/labcontainers/pkg/containerlab"
+	"github.com/srl-labs/containerlab/core"
+	"github.com/srl-labs/containerlab/links"
+	"github.com/srl-labs/containerlab/types"
+)
+
+func dsmTopology(private, image, peerImage string) (*labv1.TopologySource, error) {
+	if !filepath.IsAbs(private) || !strings.HasPrefix(filepath.Base(private), "dsm-private.") {
+		return nil, fmt.Errorf("explicit prepared private-image directory required")
+	}
+	return clab.Source(&core.Config{Topology: &types.Topology{
+		Defaults: &types.NodeDefinition{NetworkMode: "none", ImagePullPolicy: "Never"},
+		Nodes: map[string]*types.NodeDefinition{
+			"dsm":  {Kind: "generic_vm", Image: image, Binds: []string{private + ":/private"}},
+			"peer": {Kind: "linux", Image: peerImage, Entrypoint: "/bin/sleep", Cmd: "infinity"},
+		},
+		Links: []*links.LinkDefinition{{Link: &links.LinkBriefRaw{Endpoints: []string{"dsm:eth1", "peer:eth1"}}}},
+	}})
+}
+
+func TestDSMTopologyRejectsSeedDirectory(t *testing.T) {
+	for _, path := range []string{"", "/", "../out", "/home/user/lab/dsm/out"} {
+		if _, err := dsmTopology(path, "dsm:pinned", "peer:pinned"); err == nil {
+			t.Fatal("accepted non-private path", path)
+		}
+	}
+}
+
+func TestLiveDSMPrivateBoot(t *testing.T) {
+	private := os.Getenv("DSM_PRIVATE_DIR")
+	if private == "" {
+		t.Skip("requires explicit prepared private DSM disks")
+	}
+	image, peerImage, daemon := os.Getenv("DSM_VM_IMAGE"), os.Getenv("DSM_PEER_IMAGE"), os.Getenv("LABCONTAINERS_LABD")
+	if image == "" || peerImage == "" || daemon == "" {
+		t.Fatal("pinned images and matched daemon required")
+	}
+	credentials, err := os.ReadFile(filepath.Join(private, "account.env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := dsmTopology(private, image, peerImage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	c, err := client.Launch(ctx, client.Options{LabdPath: daemon, StateDir: filepath.Join(private, "labd-state")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Close(); err != nil {
+			t.Error("cleanup", err)
+		}
+	}()
+	lab, err := c.Start(ctx, &labv1.LabSpec{Topology: source, Nodes: map[string]*labv1.NodeExtension{"dsm": {Control: "container"}, "peer": {Control: "container"}}}, 12*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("session=%s evidence=%s", lab.ID(), lab.Artifacts())
+	defer func() {
+		cleanup, done := context.WithTimeout(context.Background(), 20*time.Second)
+		defer done()
+		if r, e := lab.Node("dsm").Exec(cleanup, "tail", "-n", "100", "/dsm-console.log"); e == nil {
+			t.Logf("DSM console: %s", r.Stdout)
+		}
+	}()
+	peer := lab.Node("peer")
+	r, err := peer.Exec(ctx, "sh", "-ec", "ip link set eth1 up; ip addr add 192.0.2.10/24 dev eth1; test -z \"$(ip route show default)\"")
+	if err != nil || r.ExitCode != 0 {
+		t.Fatalf("peer setup: %v %v", r, err)
+	}
+	if err := peer.Put(ctx, "/run/dsm-account.env", 0600, credentials); err != nil {
+		t.Fatal(err)
+	}
+	script := `. /run/dsm-account.env
+export SSHPASS="$DSM_PASS"
+printf '%s\n' "$DSM_PASS" | sshpass -e ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "$DSM_USER@192.0.2.20" 'set -e; sudo -S -p "" test -f /root/seaweedfs-lab-account-ready; uname -a; cat /etc.defaults/VERSION; grep -F " /volume1 btrfs " /proc/mounts; echo DSM_AUTHENTICATED_BOOT'
+`
+	var last string
+	for {
+		attempt, done := context.WithTimeout(ctx, 15*time.Second)
+		r, err := peer.Exec(attempt, "sh", "-ec", script)
+		done()
+		if err == nil && r.ExitCode == 0 && strings.Contains(string(r.Stdout), "DSM_AUTHENTICATED_BOOT") {
+			t.Log(string(r.Stdout))
+			return
+		}
+		if err != nil {
+			last = err.Error()
+		} else {
+			last = string(r.Stderr)
+		}
+		// A dead wrapper cannot become SSH-ready. Fail immediately rather
+		// than hiding an argument/launch failure behind the guest boot wait.
+		check, stop := context.WithTimeout(ctx, 10*time.Second)
+		_, wrapperErr := lab.Node("dsm").Exec(check, "/bin/true")
+		stop()
+		if wrapperErr != nil {
+			t.Fatalf("DSM VM wrapper unavailable: %v; last SSH result: %s", wrapperErr, last)
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("DSM boot did not authenticate: %s", last)
+		case <-time.After(5 * time.Second):
+		}
+	}
+}
