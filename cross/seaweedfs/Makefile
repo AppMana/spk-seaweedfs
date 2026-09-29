@@ -1,6 +1,6 @@
 PKG_NAME = seaweedfs
-PKG_VERS = 4.47-appmana.lab.2
-PKG_COMMIT = 5a21ae355b33eec636d8027dcfc0eeb6e8fdd27a
+PKG_VERS = 4.47-appmana.lab.3
+PKG_COMMIT = 8ecd3e03f9fb7b4361cce12cd439520bfef00ca1
 PKG_EXT = tar.gz
 PKG_DIST_NAME = $(PKG_COMMIT).$(PKG_EXT)
 PKG_DIST_SITE = https://github.com/AppMana/forks-seaweedfs/archive

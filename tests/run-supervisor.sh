@@ -13,11 +13,11 @@ trap 'rm -rf "$TMP"' EXIT
 cat >"$TMP/fake-weed" <<'EOF'
 #!/bin/sh
 fail() { printf '%s\n' "$1" >"$MISMATCH"; exit 0; }
-[ "$GOMEMLIMIT" = "$EXPECT_GOMEMLIMIT" ] || fail "GOMEMLIMIT=$GOMEMLIMIT want $EXPECT_GOMEMLIMIT"
+[ "${GOMEMLIMIT-unset}" = "$EXPECT_GOMEMLIMIT" ] || fail "GOMEMLIMIT=${GOMEMLIMIT-unset} want $EXPECT_GOMEMLIMIT"
 [ "$1" = volume ] || fail "argv1=$1"
-[ "$2" = -concurrentUploadLimitMB=3072 ] || fail "argv2=$2"
-[ "$3" = -concurrentDownloadLimitMB=1024 ] || fail "argv3=$3"
-[ "$4" = -readBufferSizeMB=1 ] || fail "argv4=$4"
+[ "$2" = -readBufferSizeMB=1 ] || fail "argv2=$2"
+[ "$3" = -dir=/unused ] || fail "argv3=$3"
+[ "$#" -eq 3 ] || fail "unexpected extra arguments: $#"
 count=0
 [ ! -f "$SUPERVISOR_COUNT" ] || count=$(cat "$SUPERVISOR_COUNT")
 count=$((count + 1))
@@ -67,13 +67,18 @@ run_case() {
   grep -q 'weed exited cleanly; not restarting' "$PKGVAR/log/weed.1.log"
 }
 
-# No volume.yaml: fall back to a single instance and the whole budget.
-run_case single 3072MiB
+# Single-instance packages must let the core derive memory from DSM's cgroup.
+unset GOMEMLIMIT
+run_case single unset
+run_case explicit_single unset 1
+GOMEMLIMIT='' run_case empty_override unset 1
 
-# volume.instances: 2 is what appmana-017-ds runs, because the "011" policy
-# needs sameRackCount + 1 data nodes in a rack. The budget is divided rather
-# than applied per instance, so two servers cannot target 6 GiB inside the 5 G
-# MemoryMax the package installs.
-run_case two_instances 1536MiB 2
+# Multi-instance remains supported for policies with a same-rack copy or for
+# explicit sharding. The budget is divided rather than applied per instance, so
+# two servers cannot target 6 GiB inside the 5 G MemoryMax the package installs.
+# AppMana's current 020 placement uses one NAS instance.
+GOMEMLIMIT='' run_case two_instances 1536MiB 2
+GOMEMLIMIT=2048MiB run_case explicit_budget 2048MiB 2
+GOMEMLIMIT=2048MiB run_case explicit_single_budget 2048MiB 1
 
 echo "run.sh supervisor contract passed"

@@ -122,12 +122,22 @@ reverts to the bundled binary on the next restart.
 
 ## Resource limits
 
-The supervisor applies a 3072 MiB Go heap budget **divided by
-`volume.instances`**, 3072 MiB concurrent upload and 1024 MiB download admission limits,
-and a 1 MiB read buffer. One instance gets the full 3 GiB; two get 1536 MiB
-each. An explicit `GOMEMLIMIT` environment variable or matching
-`volume.extraFlags` overrides this. The Go limit is a soft target and does not
-bound filesystem cache, mmap'd index files, or total process memory.
+With one volume instance, the supervisor leaves `GOMEMLIMIT` unset and omits
+both transfer admission flags. The bundled memory-aware core derives its Go
+soft limit and upload/download budgets from the effective cgroup limit, capped
+at physical RAM. With 5 GiB available this means a 4.5 GiB Go soft limit and
+2496 MiB upload / 832 MiB download admission. The read buffer remains 1 MiB.
+
+Multiple instances share one package cgroup: they retain a conservative 3072 MiB
+Go budget **divided by `volume.instances`** (1536 MiB each for two), with admission
+derived from each process's budget. Otherwise each process would independently
+claim 90% of the same shared limit. An explicit `GOMEMLIMIT` remains a per-process
+override; `volume.extraFlags` can explicitly override admission. Empty
+`GOMEMLIMIT` is removed to enable automatic sizing. The Go limit is soft and
+does not bound filesystem cache, mmap'd index files, or total process memory.
+If overriding `weed.image` with an older/upstream build without automatic memory
+sizing, explicitly configure compatible memory and admission limits; these
+automatic defaults require the pinned AppMana memory fix.
 
 DSM installs the bundled `conf/systemd/pkg-seaweedfs-volume.service` into
 `/usr/local/lib/systemd/system/`. The service runs as `sc-seaweedfs`; installation
@@ -154,7 +164,7 @@ as well as systemd's loaded settings:
 
 ```sh
 systemctl show pkg-seaweedfs-volume.service -p User -p LimitNOFILE -p MemoryLimit -p LimitNPROC
-tr '\0' '\n' < /proc/$(pgrep -f 'weed volume' | head -1)/environ | grep GOMEMLIMIT
+grep 'memory limits:' /var/packages/seaweedfs/var/log/weed.log | tail -2
 grep 'nofile soft=' /var/packages/seaweedfs/var/log/weed.log | tail -2
 ```
 
