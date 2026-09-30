@@ -64,20 +64,24 @@ Tag releases reuse these checks and upload the same built artifact, without
 rebuilding it. The tag must be `v<SPK_VERS>-<SPK_REV>`. Publication is blocked
 unless repository Actions variable `DSM_QUALIFIED_SPK_SHA256` matches that
 artifact's SHA-256. Leave this unset until the exact downloaded CI artifact
-passes isolated DSM install/upgrade/reboot/rollback/uninstall-preservation tests.
+passes isolated DSM install/forward-upgrade/reboot/crash/uninstall-preservation tests.
 After qualification, set the digest and rerun only the failed publication job
 so the already-tested bytes are reused; rerunning the build requires fresh
 qualification. This temporary promotion gate does not itself execute DSM tests.
 Never set the variable merely because source tests or package inspection pass.
 
-The current package definition is the **lab-only 4.47-11 candidate**, pinning
+The current package definition is the **lab-only 4.47-12 candidate**, pinning
 SeaweedFS `8ecd3e03f9fb7b4361cce12cd439520bfef00ca1`, including durable-index
 replay fixes and cgroup-derived memory/admission sizing. The old `4.40-4` SPK
 remains the upgrade-test baseline. Do not deploy or set
 `DSM_QUALIFIED_SPK_SHA256` until the exact candidate artifact has passed real
-DSM install, restart/crash, upgrade, supported rollback, and data-preserving
+DSM install, restart/crash, forward upgrade, and data-preserving
 uninstall tests. Component tests and structural SPK inspection do not satisfy
 that gate. The binary embeds its full source SHA, not just a package label.
+
+Downgrading to a legacy SPK is not a deployment requirement. Keep backups and
+the retained baseline for compatibility investigations; do not uninstall a
+working candidate to qualify an unnecessary downgrade.
 
 For a new candidate, update `PKG_VERS`/`PKG_COMMIT` and the verified archive
 digests in `cross/seaweedfs/`, `SPK_VERS`/`SPK_REV` in
