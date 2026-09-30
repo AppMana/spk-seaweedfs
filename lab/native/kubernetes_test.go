@@ -45,6 +45,15 @@ func dsmLabShareName(session string) string {
 	return "swlab-" + hash[:24]
 }
 
+func dsmStartPackageScript(packageDir, synopkg string) string {
+	registration := shellQuote(packageDir + "/target/bin/register-service.sh")
+	// New packages require the documented administrator registration before
+	// synopkg can start their bounded unit. Older compatibility baselines do
+	// not ship this script. Never bypass registration failure or spawn weed.
+	return "set -eu\nif test -f " + registration + "; then\nsh " + registration +
+		"\nfi\n" + shellQuote(synopkg) + " start seaweedfs\n"
+}
+
 func TestDSMLabShareNameFitsDSM(t *testing.T) {
 	id := "9345f3e54e271b1a9cd979b93f587cda"
 	name := dsmLabShareName(id)
@@ -387,7 +396,7 @@ install -m 600 -o sc-seaweedfs `+shellQuote(configPath)+` "$pkg/var/volume.yaml"
 # workload. Otherwise power loss can restore the seed's empty config instead
 # of exercising acknowledged-data recovery. Never move this after data writes.
 sync
-/usr/syno/bin/synopkg start seaweedfs
+`+dsmStartPackageScript("/var/packages/seaweedfs", "/usr/syno/bin/synopkg")+`
 sleep 5
 /usr/syno/bin/synopkg status seaweedfs
 tail -40 "$pkg/var/log/weed.log"
