@@ -88,6 +88,10 @@ test-dsm-data-upgrade:
 	@test -n "$$DSM_PRIVATE_DIR" && test -n "$$DSM_KUBERNETES_INPUTS" && test -n "$$DSM_BASELINE_SPK" && test -n "$$DSM_CANDIDATE_SPK"
 	cd $(REPO_ROOT)/lab/native && $(GO) test -v -count=1 -timeout 30m -run '^TestLiveDSMKubernetesDataUpgrade$$' ./...
 
+.PHONY: test-dsm-complete
+test-dsm-complete:
+	DSM_FULL_PACKAGE_LIFECYCLE=1 $(MAKE) test-dsm-data-upgrade
+
 test: test-bootstrap test-supervisor test-package-source test-package-metadata test-runner-contracts test-native
 
 # Stage our authoritative source into the spksrc submodule. Recreate each

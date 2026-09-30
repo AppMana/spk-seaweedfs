@@ -438,5 +438,15 @@ grep -E 'memory limits: available [1-9][0-9]* .*GOMEMLIMIT env false, Go memory 
 			assertResources()
 		}
 		t.Log("DSM_KUBERNETES_JOIN_PASS: authenticated discovery, real topology membership and running-process resource limits")
+		if os.Getenv("DSM_FULL_PACKAGE_LIFECYCLE") == "1" {
+			if upgrade == nil {
+				t.Fatal("full lifecycle requires explicit baseline/candidate upgrade inputs")
+			}
+			// Reuse the qualified private VM. First prove uninstall/reinstall
+			// retains its state; only then archive that state for fresh install.
+			qualifyDSMRetention(t, ctx, lab, upgrade.candidate)
+			qualifyDSMFreshInstall(t, ctx, lab, upgrade.candidate)
+			t.Log("DSM_FULL_PACKAGE_LIFECYCLE_PASS")
+		}
 	})
 }

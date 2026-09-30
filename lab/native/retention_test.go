@@ -19,8 +19,14 @@ func TestLiveDSMPackageUninstallRetention(t *testing.T) {
 	}
 	candidate := pinnedArtifact(t, "DSM_CANDIDATE_SPK", "DSM_CANDIDATE_SPK_SHA256")
 	runDSMFor(t, 20*time.Minute, func(ctx context.Context, lab *client.Session) {
-		path := dsmUpload(t, ctx, lab, "retention-candidate.spk", candidate)
-		dsmRoot(t, ctx, lab, `set -eu
+		qualifyDSMRetention(t, ctx, lab, candidate)
+	})
+}
+
+func qualifyDSMRetention(t *testing.T, ctx context.Context, lab *client.Session, candidate []byte) {
+	t.Helper()
+	path := dsmUpload(t, ctx, lab, "retention-candidate.spk", candidate)
+	dsmRoot(t, ctx, lab, `set -eu
 test -f /root/seaweedfs-private-image
 test -f /root/seaweedfs-lab-account-ready
 pkg=/var/packages/seaweedfs
@@ -57,6 +63,5 @@ sh "$pkg/target/bin/register-service.sh"
 /usr/syno/bin/synopkg stop seaweedfs
 echo DSM_PACKAGE_UNINSTALL_REINSTALL_RETENTION_PASS
 `)
-		assertDSMStopped(t, ctx, lab)
-	})
+	assertDSMStopped(t, ctx, lab)
 }
