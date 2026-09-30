@@ -5,8 +5,8 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 CROSS_MAKEFILE="$ROOT/cross/seaweedfs/Makefile"
 DIGESTS="$ROOT/cross/seaweedfs/digests"
 
-expected_version=4.47-appmana.lab.3
-expected_commit=8ecd3e03f9fb7b4361cce12cd439520bfef00ca1
+expected_version=4.47-appmana.lab.4
+expected_commit=99e81207f4ffc438effe1f3bb67b5b926e174670
 expected_go_fuse_commit=1bdeec4d57d1e9ee85d4938f36f2ed876dd7bd5e
 
 value() {
