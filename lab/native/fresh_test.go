@@ -20,8 +20,14 @@ func TestLiveDSMPackageFreshInstall(t *testing.T) {
 	}
 	candidate := pinnedArtifact(t, "DSM_CANDIDATE_SPK", "DSM_CANDIDATE_SPK_SHA256")
 	runDSMFor(t, 20*time.Minute, func(ctx context.Context, lab *client.Session) {
-		path := dsmUpload(t, ctx, lab, "fresh-candidate.spk", candidate)
-		dsmRoot(t, ctx, lab, `set -eu
+		qualifyDSMFreshInstall(t, ctx, lab, candidate)
+	})
+}
+
+func qualifyDSMFreshInstall(t *testing.T, ctx context.Context, lab *client.Session, candidate []byte) {
+	t.Helper()
+	path := dsmUpload(t, ctx, lab, "fresh-candidate.spk", candidate)
+	dsmRoot(t, ctx, lab, `set -eu
 test -f /root/seaweedfs-private-image
 test -f /root/seaweedfs-lab-account-ready
 pkg=/var/packages/seaweedfs
@@ -58,5 +64,4 @@ test -d "$backup"
 sh "$pkg/target/bin/register-service.sh"
 echo DSM_PACKAGE_FRESH_INSTALL_PASS
 `)
-	})
 }
