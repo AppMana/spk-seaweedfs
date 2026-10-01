@@ -2,7 +2,7 @@ name: test
 
 on:
   push:
-    branches: [main]
+    branches: [main, wip/supervisor-and-install-docs]
   pull_request:
   workflow_call:
   workflow_dispatch:
