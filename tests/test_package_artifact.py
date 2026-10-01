@@ -6,6 +6,7 @@ import tempfile
 import unittest
 
 from package_artifact import inspect_spk
+import package_artifact
 
 
 def archive(files, compressed=False):
@@ -19,6 +20,19 @@ def archive(files, compressed=False):
 
 
 class PackageArtifactContract(unittest.TestCase):
+    def test_target_dsm_metadata_preflight(self):
+        info = 'arch="broadwellnk v1000"\nos_min_ver="7.2-72806"\n'
+        package_artifact.check_dsm_target(info, '7.4.1-90080', 'v1000')
+        package_artifact.check_dsm_target(info, '7.2-72806', 'broadwellnk')
+        for version, arch in [('7.2-72805', 'v1000'), ('7.1-90080', 'v1000'),
+                              ('7.4.1-90080', 'armv8'), ('7.4', 'v1000')]:
+            with self.subTest(version=version, arch=arch), self.assertRaises(ValueError):
+                package_artifact.check_dsm_target(info, version, arch)
+        for bad in [info.replace('os_min_ver', 'missing'), info + info,
+                    info + 'os_max_ver="7.3-99999"\n']:
+            with self.assertRaises(ValueError):
+                package_artifact.check_dsm_target(bad, '7.4.1-90080', 'v1000')
+
     def test_rejects_incomplete_wrong_version_and_nonexecutables(self):
         elf = b'\x7fELF\x02\x01' + b'\0' * 12 + b'\x3e\0'
         payload = [('bin/weed', elf, 0o755), ('bin/synology-volume-bootstrap', elf, 0o755),
