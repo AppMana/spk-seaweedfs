@@ -59,6 +59,10 @@ also builds the x64 DSM 7.2 SPK and inspects its INFO version/architecture,
 executable lifecycle hooks, x86-64 payloads and component hashes. Run
 `python3 tests/package_artifact.py` to inspect the exact version/revision named
 by the package Makefile; it never selects an arbitrary older SPK.
+For a target NAS, add `--dsm-version 7.4.1-90080 --dsm-arch v1000`, replacing
+both values with the observed DSM release/build and Synology architecture.
+This read-only check rejects incompatible package metadata; it does not prove
+installation, service registration or runtime compatibility on that DSM release.
 
 Tag releases reuse these checks and upload the same built artifact, without
 rebuilding it. The tag must be `v<SPK_VERS>-<SPK_REV>`. Publication is blocked
