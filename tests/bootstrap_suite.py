@@ -34,10 +34,13 @@ def main():
     parser.add_argument('--log', required=True, type=Path)
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
-    with args.log.open('w') as output:
+    # Go module/toolchain download diagnostics are plain text on stderr even
+    # with -json. Keep them, but never mix them into the strict event stream.
+    stderr_log = Path(str(args.log) + '.stderr')
+    with args.log.open('w') as output, stderr_log.open('w') as diagnostics:
         result = subprocess.run(['go', 'test', '-json', '-race', '-count=1', './...'],
                                 cwd=root / 'cmd/synology-volume-bootstrap',
-                                stdout=output, stderr=subprocess.STDOUT, timeout=600)
+                                stdout=output, stderr=diagnostics, timeout=600)
     verify(args.log.read_text(), result.returncode)
     print('All %d required bootstrap tests passed: %s' % (len(REQUIRED), args.log))
 
