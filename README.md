@@ -74,20 +74,21 @@ so the already-tested bytes are reused; rerunning the build requires fresh
 qualification. This temporary promotion gate does not itself execute DSM tests.
 Never set the variable merely because source tests or package inspection pass.
 
-The current package definition is the **4.47-14 candidate**, pinning
-SeaweedFS `dd2b9ef98d38488121808765148306c365e341b1`, including durable-index
-replay fixes and cgroup-derived memory/admission sizing. The old `4.40-4` SPK
+The current package definition is the **4.47-15 candidate**, pinning
+SeaweedFS `e1aaa5124781c6756be11cf0a722876813ca1c82`, including durable-index
+replay fixes, cgroup-derived memory/admission sizing, guarded missing-record
+repair, and refusal to vacuum an unindexed data tail. The old `4.40-4` SPK
 remains the upgrade-test baseline. Do not deploy or set
 `DSM_QUALIFIED_SPK_SHA256` until the exact candidate artifact has passed real
 DSM install, restart/crash, forward upgrade, and data-preserving
 uninstall tests. Component tests and structural SPK inspection do not satisfy
 that gate. The binary embeds its full source SHA, not just a package label.
-The exact SPK with SHA-256
+The previous **4.47-14** SPK with SHA-256
 `cafaf1646e31e7e987bea48ac6e5f6c0919080109e4b4e8a59eb381b85f1e5f8`
 passed the isolated DSM 7.2 package lifecycle gate, including forward upgrade,
 restart, abrupt VM crash, original-data readback and Kubernetes registration.
 It is not yet installed on the production NAS; DSM 7.4.1 metadata eligibility
-does not extend that lifecycle result to DSM 7.4.1.
+does not extend that lifecycle result to DSM 7.4.1 or to the new 4.47-15 artifact.
 
 Downgrading to a legacy SPK is not a deployment requirement. Keep backups and
 the retained baseline for compatibility investigations; do not uninstall a
