@@ -36,10 +36,38 @@ def contents(archive, entries, name):
     return archive.extractfile(entry).read()
 
 
-def inspect_spk(path, version):
+def check_dsm_target(info, version, architecture):
+    """Read-only metadata eligibility, not proof of installed DSM lifecycle."""
+    def one(key):
+        values = re.findall(r'^' + key + r'="([^"]*)"$', info, re.M)
+        if len(values) != 1:
+            raise ValueError('expected one INFO ' + key)
+        return values[0]
+
+    def release(value):
+        match = re.fullmatch(r'(\d+)\.(\d+)(?:\.(\d+))?-(\d+)', value)
+        if not match:
+            raise ValueError('expected DSM major.minor[.micro]-build')
+        return tuple(int(part or 0) for part in match.groups())
+
+    if architecture not in one('arch').split():
+        raise ValueError('DSM architecture not covered by package')
+    if release(version) < release(one('os_min_ver')):
+        raise ValueError('DSM version below package minimum')
+    # No qualified package currently declares a maximum. Fail closed rather
+    # than guessing inclusive/exclusive DSM upper-bound semantics.
+    if re.search(r'^os_max_ver=', info, re.M):
+        raise ValueError('package maximum DSM version requires explicit review')
+
+
+def inspect_spk(path, version, dsm_version=None, dsm_arch=None):
+    if bool(dsm_version) != bool(dsm_arch):
+        raise ValueError('DSM version and architecture must be paired')
     with tarfile.open(path) as outer:
         entries = members(outer)
         info = contents(outer, entries, 'INFO').decode()
+        if dsm_version:
+            check_dsm_target(info, dsm_version, dsm_arch)
         for key, expected in [('package', 'seaweedfs'), ('version', version)]:
             if re.findall(r'^' + key + r'="([^"]*)"$', info, re.M) != [expected]:
                 raise ValueError('unexpected INFO ' + key)
@@ -100,6 +128,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--tag', help='release tag must equal v<package-version>')
     parser.add_argument('--path-only', action='store_true')
+    parser.add_argument('--dsm-version', help='observed DSM version, e.g. 7.4.1-90080')
+    parser.add_argument('--dsm-arch', help='observed Synology architecture, e.g. v1000')
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     makefile = root / 'diyspk/seaweedfs/Makefile'
@@ -107,7 +137,11 @@ def main():
     if args.tag is not None and args.tag != 'v' + version:
         parser.error('tag does not match package version: v' + version)
     path = root / 'spksrc/packages' / ('seaweedfs_x64-7.2_' + version + '.spk')
-    report = inspect_spk(path, version)
+    report = inspect_spk(path, version, args.dsm_version, args.dsm_arch)
+    if args.dsm_version:
+        report['target_metadata_preflight'] = dict(
+            dsm_version=args.dsm_version, architecture=args.dsm_arch,
+            status='passed', scope='package metadata only; not install/runtime qualification')
     print(path if args.path_only else json.dumps(report, indent=2))
 
 
