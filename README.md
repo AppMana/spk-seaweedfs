@@ -59,6 +59,10 @@ also builds the x64 DSM 7.2 SPK and inspects its INFO version/architecture,
 executable lifecycle hooks, x86-64 payloads and component hashes. Run
 `python3 tests/package_artifact.py` to inspect the exact version/revision named
 by the package Makefile; it never selects an arbitrary older SPK.
+For a target NAS, add `--dsm-version 7.4.1-90080 --dsm-arch v1000`, replacing
+both values with the observed DSM release/build and Synology architecture.
+This read-only check rejects incompatible package metadata; it does not prove
+installation, service registration or runtime compatibility on that DSM release.
 
 Tag releases reuse these checks and upload the same built artifact, without
 rebuilding it. The tag must be `v<SPK_VERS>-<SPK_REV>`. Publication is blocked
@@ -70,14 +74,20 @@ so the already-tested bytes are reused; rerunning the build requires fresh
 qualification. This temporary promotion gate does not itself execute DSM tests.
 Never set the variable merely because source tests or package inspection pass.
 
-The current package definition is the **lab-only 4.47-12 candidate**, pinning
-SeaweedFS `8ecd3e03f9fb7b4361cce12cd439520bfef00ca1`, including durable-index
+The current package definition is the **4.47-14 candidate**, pinning
+SeaweedFS `dd2b9ef98d38488121808765148306c365e341b1`, including durable-index
 replay fixes and cgroup-derived memory/admission sizing. The old `4.40-4` SPK
 remains the upgrade-test baseline. Do not deploy or set
 `DSM_QUALIFIED_SPK_SHA256` until the exact candidate artifact has passed real
 DSM install, restart/crash, forward upgrade, and data-preserving
 uninstall tests. Component tests and structural SPK inspection do not satisfy
 that gate. The binary embeds its full source SHA, not just a package label.
+The exact SPK with SHA-256
+`cafaf1646e31e7e987bea48ac6e5f6c0919080109e4b4e8a59eb381b85f1e5f8`
+passed the isolated DSM 7.2 package lifecycle gate, including forward upgrade,
+restart, abrupt VM crash, original-data readback and Kubernetes registration.
+It is not yet installed on the production NAS; DSM 7.4.1 metadata eligibility
+does not extend that lifecycle result to DSM 7.4.1.
 
 Downgrading to a legacy SPK is not a deployment requirement. Keep backups and
 the retained baseline for compatibility investigations; do not uninstall a
@@ -90,7 +100,8 @@ digests in `cross/seaweedfs/`, `SPK_VERS`/`SPK_REV` in
 the exact candidate path is derived by `tests/package_artifact.py`, never by
 selecting an arbitrary SPK from the build directory.
 
-The local 2026-09-23 build completed and passed `tests/package_artifact.py`:
+Historical evidence (not the current candidate): the local 2026-09-23 build
+completed and passed `tests/package_artifact.py`:
 `seaweedfs_x64-7.2_4.47-1.spk`, SHA-256
 `6dc1b62e6c2c6d9ed751709571a06c024d323ea7480068f482af0d004c46b344`.
 Its static x86-64 weed payload SHA-256 is
