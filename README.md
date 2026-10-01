@@ -77,8 +77,8 @@ Never set the variable merely because source tests or package inspection pass.
 The current package definition is the **4.47-15 candidate**, pinning
 SeaweedFS `e1aaa5124781c6756be11cf0a722876813ca1c82`, including durable-index
 replay fixes, cgroup-derived memory/admission sizing, guarded missing-record
-repair, and refusal to vacuum an unindexed data tail. The old `4.40-4` SPK
-remains the upgrade-test baseline. Do not deploy or set
+repair, and refusal to vacuum an unindexed data tail. The qualified `4.47-14` SPK
+is the forward-upgrade test baseline. Do not deploy or set
 `DSM_QUALIFIED_SPK_SHA256` until the exact candidate artifact has passed real
 DSM install, restart/crash, forward upgrade, and data-preserving
 uninstall tests. Component tests and structural SPK inspection do not satisfy
@@ -89,6 +89,14 @@ passed the isolated DSM 7.2 package lifecycle gate, including forward upgrade,
 restart, abrupt VM crash, original-data readback and Kubernetes registration.
 It is not yet installed on the production NAS; DSM 7.4.1 metadata eligibility
 does not extend that lifecycle result to DSM 7.4.1 or to the new 4.47-15 artifact.
+
+The **4.47-15** artifact with SHA-256
+`389a7ff91b59dd6cb288b6e52a76cc1b2d5e2a341ca8ea35d1db6715fbf0233f`
+has separately passed that isolated DSM 7.2 lifecycle gate, including the
+forward upgrade from 4.47-14 and abrupt VM crash/recovery. Its bundled `weed`
+SHA-256 is `1fdc61adc091c4ea69c643d38dd3211c8c41c9b8c007f1f0bb31a4e63f8aeb7b`.
+Production installation still requires DSM administrator authentication;
+DSM 7.4.1 has passed metadata preflight, not this VM runtime qualification.
 
 Downgrading to a legacy SPK is not a deployment requirement. Keep backups and
 the retained baseline for compatibility investigations; do not uninstall a
