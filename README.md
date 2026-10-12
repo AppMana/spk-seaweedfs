@@ -74,12 +74,18 @@ so the already-tested bytes are reused; rerunning the build requires fresh
 qualification. This temporary promotion gate does not itself execute DSM tests.
 Never set the variable merely because source tests or package inspection pass.
 
-The current package definition is the **4.48-1 candidate**, pinning
-SeaweedFS `e7a60962653315b3c25aee65238030d06d7d18da` (upstream 4.48 base)
-and go-fuse `6ead27e20708423a00718812de796241659ad387`. Over 4.47-16 it adds
-upstream 4.48 and writer-side avoidance of a stalled volume server: a stalled
-chunk upload or S3 chunk copy moves to a new assignment, and the master
-assigns a volume that avoids the servers the writer saw stall.
+The current package definition is the **4.48-2 candidate**, pinning
+SeaweedFS `27afab3bb0b39726df5f17afa4f1454203bba69f` and go-fuse
+`6ead27e20708423a00718812de796241659ad387`. Over 4.48-1 it holds each
+upload body in exactly its admitted bytes (a full 4 MiB body no longer
+doubles its buffer to read EOF, which let stalled uploads hold twice the
+admission budget and exhaust the memory limit), and `VolumeCopy` keeps the
+existing replica until the copy is complete and mounted.
+4.48-1 pinned `e7a60962653315b3c25aee65238030d06d7d18da` (upstream 4.48 base);
+over 4.47-16 it added upstream 4.48 and writer-side avoidance of a stalled
+volume server: a stalled chunk upload or S3 chunk copy moves to a new
+assignment, and the master assigns a volume that avoids the servers the
+writer saw stall.
 4.47-16 pinned `5bd2ac835d6668537a749febb89888467977867f`; over 4.47-15 it added
 `VolumeCopy` of a source volume with deletes since load (the copy no longer
 fails its file-count check after removing the local replica) and an upload
