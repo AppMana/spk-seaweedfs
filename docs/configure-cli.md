@@ -17,7 +17,7 @@ The same edits the wizard would make are reachable here. There is no DSM-specifi
 
 ```yaml
 kube:
-  apiserver: https://api.k8s.appmana.com:6443
+  apiserver: https://kubernetes.example.com:6443
   # Path to a file containing the SA bearer token (no embedded JWT in YAML).
   tokenFile: /var/packages/seaweedfs/var/kube/token
   # Apiserver CA. Leave the file empty (zero bytes) to use the system CA store.
@@ -26,19 +26,19 @@ kube:
   insecureSkipTLSVerify: false
   namespace: seaweedfs
   # metadata.name of the Seaweed CR managed by seaweedfs-operator.
-  seaweedName: appmana
+  seaweedName: seaweedfs
 
 volume:
   # On-disk directory `weed volume` writes data files into.
   dir: /volume1/seaweedfs
   # Address advertised to masters. Must be reachable from every other
   # SeaweedFS node (master, filer, S3 gateway, peer volume).
-  ip: 10.2.0.73
-  publicUrl: 10.2.0.73:8080
+  ip: 192.0.2.10
+  publicUrl: 192.0.2.10:8080
   port: 8080
   grpcPort: 18080
   dataCenter: synology
-  rack: appmana-017-ds
+  rack: nas-1
   # Maximum volume slot count for placement. Sized for DAS-class capacity.
   max: 1000
   diskType: hdd      # hdd | ssd | "" (omit)

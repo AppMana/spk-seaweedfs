@@ -51,20 +51,20 @@ Write `volume.yaml`:
 ```bash
 sudo tee $PKGVAR/volume.yaml >/dev/null <<'EOF'
 kube:
-  apiserver: https://api.k8s.appmana.com:6443
+  apiserver: https://kubernetes.example.com:6443
   tokenFile: /var/packages/seaweedfs/var/kube/token
   caFile:    /var/packages/seaweedfs/var/kube/ca.crt
   insecureSkipTLSVerify: false
   namespace: seaweedfs
-  seaweedName: appmana
+  seaweedName: seaweedfs
 volume:
   dir: /volume1/seaweedfs
-  ip: 10.2.0.73
-  publicUrl: 10.2.0.73:8080
+  ip: 192.0.2.10
+  publicUrl: 192.0.2.10:8080
   port: 8080
   grpcPort: 18080
   dataCenter: synology
-  rack: appmana-017-ds
+  rack: nas-1
   max: 1000
   diskType: hdd
   index: ""
@@ -99,7 +99,7 @@ From any pod inside the cluster (or over `kubectl exec` into a master):
 weed shell -master <master>:9333 <<<'volume.list'
 ```
 
-Look for a node entry where `DataCenter:synology Rack:appmana-017-ds` and `PublicUrl:10.2.0.73:8080`. That is the Synology.
+Look for a node entry where `DataCenter:synology Rack:nas-1` and `PublicUrl:192.0.2.10:8080`. That is the Synology.
 
 ## Common issues
 

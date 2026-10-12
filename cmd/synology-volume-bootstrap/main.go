@@ -87,10 +87,11 @@ type config struct {
 		// Instances runs N `weed volume` processes (default 1), all in
 		// the same rack. SeaweedFS's volume growth requires every rack
 		// participating in a replication policy with a same-rack copy
-		// count (e.g. production's "011") to have >= sameRackCount+1
-		// data nodes — a single-process NAS can never be selected under
-		// such policies (weed/topology/volume_growth.go). Instance i
-		// serves port+i / grpcPort+i from <dir>/v<i>.
+		// count (e.g. "011") to have >= sameRackCount+1 data nodes — a
+		// single-process NAS can never be selected under such policies
+		// (weed/topology/volume_growth.go). A policy with no same-rack copy
+		// (e.g. "020") needs only one instance. Instance i serves port+i / grpcPort+i
+		// from <dir>/v<i>.
 		Instances int `yaml:"instances"`
 	} `yaml:"volume"`
 	MTLS struct {
