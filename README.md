@@ -74,11 +74,17 @@ so the already-tested bytes are reused; rerunning the build requires fresh
 qualification. This temporary promotion gate does not itself execute DSM tests.
 Never set the variable merely because source tests or package inspection pass.
 
-The current package definition is the **4.47-15 candidate**, pinning
-SeaweedFS `e1aaa5124781c6756be11cf0a722876813ca1c82`, including durable-index
+The current package definition is the **4.47-16 candidate**, pinning
+SeaweedFS `5bd2ac835d6668537a749febb89888467977867f` and go-fuse
+`6ead27e20708423a00718812de796241659ad387`. Over 4.47-15 it adds
+`VolumeCopy` of a source volume with deletes since load (the copy no longer
+fails its file-count check after removing the local replica) and an upload
+deadline that abandons a volume server write only when it stops making
+progress, so a slow but healthy NAS keeps its uploads. 4.47-15 pinned
+`e1aaa5124781c6756be11cf0a722876813ca1c82`, with durable-index
 replay fixes, cgroup-derived memory/admission sizing, guarded missing-record
-repair, and refusal to vacuum an unindexed data tail. The qualified `4.47-14` SPK
-is the forward-upgrade test baseline. Do not deploy or set
+repair, and refusal to vacuum an unindexed data tail. The qualified `4.47-15` SPK
+is the forward-upgrade test baseline. Do not set
 `DSM_QUALIFIED_SPK_SHA256` until the exact candidate artifact has passed real
 DSM install, restart/crash, forward upgrade, and data-preserving
 uninstall tests. Component tests and structural SPK inspection do not satisfy
@@ -87,8 +93,8 @@ The previous **4.47-14** SPK with SHA-256
 `cafaf1646e31e7e987bea48ac6e5f6c0919080109e4b4e8a59eb381b85f1e5f8`
 passed the isolated DSM 7.2 package lifecycle gate, including forward upgrade,
 restart, abrupt VM crash, original-data readback and Kubernetes registration.
-It is not yet installed on the production NAS; DSM 7.4.1 metadata eligibility
-does not extend that lifecycle result to DSM 7.4.1 or to the new 4.47-15 artifact.
+DSM 7.4.1 metadata eligibility does not extend that lifecycle result to
+DSM 7.4.1 or to later artifacts.
 
 The **4.47-15** artifact with SHA-256
 `389a7ff91b59dd6cb288b6e52a76cc1b2d5e2a341ca8ea35d1db6715fbf0233f`

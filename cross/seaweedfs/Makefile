@@ -1,16 +1,16 @@
 PKG_NAME = seaweedfs
-PKG_VERS = 4.47-appmana.lab.6
-PKG_COMMIT = e1aaa5124781c6756be11cf0a722876813ca1c82
+PKG_VERS = 4.47-appmana.lab.7
+PKG_COMMIT = 5bd2ac835d6668537a749febb89888467977867f
 PKG_EXT = tar.gz
 PKG_DIST_NAME = $(PKG_COMMIT).$(PKG_EXT)
 PKG_DIST_SITE = https://github.com/AppMana/forks-seaweedfs/archive
 PKG_DIST_FILE = $(PKG_NAME)-$(PKG_VERS).$(PKG_EXT)
 PKG_DIR = forks-seaweedfs-$(PKG_COMMIT)
 
-GO_FUSE_COMMIT = 1bdeec4d57d1e9ee85d4938f36f2ed876dd7bd5e
+GO_FUSE_COMMIT = 6ead27e20708423a00718812de796241659ad387
 GO_FUSE_DIST_FILE = forks-go-fuse-$(GO_FUSE_COMMIT).tar.gz
 GO_FUSE_DIST_SITE = https://github.com/AppMana/forks-go-fuse/archive/$(GO_FUSE_COMMIT).tar.gz
-GO_FUSE_SHA256 = c6bea46abe20fe4ffe62fccb0e3e1f91b9d417c1e702cfe23cd03d46b2821b06
+GO_FUSE_SHA256 = 629f64223887fd857c9e52e6ca44e15b7de95a7ad75ddf2271b3979f6c4f07f5
 
 BUILD_DEPENDS = native/go
 
