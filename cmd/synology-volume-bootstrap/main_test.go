@@ -35,13 +35,13 @@ func makeSeaweedCR(name, ns string, replicas int64) *unstructured.Unstructured {
 
 func TestRenderArgs_BasicShape(t *testing.T) {
 	c := &config{}
-	c.Volume.IP = "10.2.0.73"
+	c.Volume.IP = "192.0.2.10"
 	c.Volume.Port = 8080
 	c.Volume.GRPCPort = 18080
-	c.Volume.PublicURL = "10.2.0.73:8080"
+	c.Volume.PublicURL = "192.0.2.10:8080"
 	c.Volume.Dir = "/volume1/seaweedfs"
 	c.Volume.DataCenter = "synology"
-	c.Volume.Rack = "appmana-017-ds"
+	c.Volume.Rack = "nas-1"
 	c.Volume.Max = 1000
 	c.Volume.DiskType = "hdd"
 	c.Volume.Index = "leveldbMedium"
@@ -52,12 +52,12 @@ func TestRenderArgs_BasicShape(t *testing.T) {
 	got := strings.Join(args, " ")
 	want := []string{
 		"-mserver=10.96.7.10:19333,10.96.7.11:19333",
-		"-ip=10.2.0.73",
-		"-publicUrl=10.2.0.73:8080",
+		"-ip=192.0.2.10",
+		"-publicUrl=192.0.2.10:8080",
 		"-port=8080",
 		"-port.grpc=18080",
 		"-dataCenter=synology",
-		"-rack=appmana-017-ds",
+		"-rack=nas-1",
 		"-dir=/volume1/seaweedfs",
 		"-max=1000",
 		"-disk=hdd",
@@ -135,10 +135,10 @@ func TestValidate_Required(t *testing.T) {
 func TestInstanceConfig_Offsets(t *testing.T) {
 	c := &config{}
 	c.Volume.Dir = "/volume1/seaweed"
-	c.Volume.IP = "10.2.0.73"
+	c.Volume.IP = "192.0.2.10"
 	c.Volume.Port = 8080
 	c.Volume.GRPCPort = 18080
-	c.Volume.PublicURL = "10.2.0.73:8080"
+	c.Volume.PublicURL = "192.0.2.10:8080"
 	c.Volume.Instances = 2
 
 	i0 := instanceConfig(c, 0)
@@ -149,7 +149,7 @@ func TestInstanceConfig_Offsets(t *testing.T) {
 	if i1.Volume.Dir != "/volume1/seaweed/v1" || i1.Volume.Port != 8081 || i1.Volume.GRPCPort != 18081 {
 		t.Errorf("instance 1: dir=%s port=%d grpc=%d", i1.Volume.Dir, i1.Volume.Port, i1.Volume.GRPCPort)
 	}
-	if i1.Volume.PublicURL != "10.2.0.73:8081" {
+	if i1.Volume.PublicURL != "192.0.2.10:8081" {
 		t.Errorf("instance 1 publicUrl must be re-derived for its own port, got %s", i1.Volume.PublicURL)
 	}
 	if c.Volume.Dir != "/volume1/seaweed" || c.Volume.Port != 8080 {
@@ -162,7 +162,7 @@ func TestInstanceConfig_SingleInstanceUnchanged(t *testing.T) {
 	// single-instance config must keep that exact layout (no /v0).
 	c := &config{}
 	c.Volume.Dir = "/volume1/seaweed-poc"
-	c.Volume.IP = "10.2.0.73"
+	c.Volume.IP = "192.0.2.10"
 	c.Volume.Port = 8080
 	c.Volume.PublicURL = "custom.host:9999"
 	c.Volume.Instances = 1
