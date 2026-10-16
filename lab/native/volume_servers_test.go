@@ -88,7 +88,8 @@ for pid in $pids; do
 done
 for port in 8080 8081; do
   n=0
-  until curl -fsS -m 5 "http://127.0.0.1:$port/status" >/dev/null; do
+  # weed listens on the advertised -ip, not loopback
+  until curl -fsS -m 5 "http://192.0.2.20:$port/status" >/dev/null; do
     n=$((n+1)); test "$n" -lt 60
     sleep 2
   done
