@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"gopkg.in/yaml.v3"
 )
@@ -337,8 +338,19 @@ func setServers(file, spec string) error {
 	if err := os.WriteFile(tmp, []byte(out.String()), info.Mode().Perm()); err != nil {
 		return err
 	}
+	// The rename replaces the file with one the caller owns; an administrator
+	// running this as root must not leave the package user unable to read it.
+	if st, ok := info.Sys().(*syscall.Stat_t); ok {
+		if err := chownFile(tmp, int(st.Uid), int(st.Gid)); err != nil {
+			os.Remove(tmp)
+			return err
+		}
+	}
 	return os.Rename(tmp, file)
 }
+
+// chownFile is os.Chown; tests observe it.
+var chownFile = os.Chown
 
 func mappingValue(m *yaml.Node, key string) *yaml.Node {
 	for i := 0; i+1 < len(m.Content); i += 2 {

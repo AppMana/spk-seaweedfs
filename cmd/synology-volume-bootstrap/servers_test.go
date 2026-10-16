@@ -1,11 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -263,5 +265,33 @@ func TestValidateLayout_NeedsNoClusterConfiguration(t *testing.T) {
 	}
 	if err := validate(c); err == nil {
 		t.Fatal("starting a server still requires the cluster connection")
+	}
+}
+
+// An administrator may run --set-servers as root; the rewritten file must
+// stay the package user's, or the unprivileged service cannot read it.
+func TestSetServers_KeepsTheFileOwner(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "volume.yaml")
+	if err := os.WriteFile(path, []byte(wizardYAML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := info.Sys().(*syscall.Stat_t)
+	var calls []string
+	saved := chownFile
+	chownFile = func(name string, uid, gid int) error {
+		calls = append(calls, fmt.Sprintf("%s %d %d", filepath.Base(name), uid, gid))
+		return nil
+	}
+	defer func() { chownFile = saved }()
+	if err := setServers(path, "/volume1/seaweed=3072"); err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprintf("volume.yaml.tmp %d %d", st.Uid, st.Gid)
+	if len(calls) != 1 || calls[0] != want {
+		t.Fatalf("chown calls %q, want [%s]", calls, want)
 	}
 }
