@@ -15,11 +15,13 @@ SVC_WRITE_PID=y
 # each background PID to the PID file — so a multi-line value runs one
 # daemon per line, and every line must stay free of shell
 # metacharacters. One line (= one `weed volume` process) per instance
-# from volume.yaml's volume.instances (default 1); the actual logic
-# lives in run.sh, which does its own quoting once it's executing.
-INSTANCES=$(sed -n 's/^[[:space:]]*instances:[[:space:]]*//p' "${VOLUME_YAML}" 2>/dev/null | head -1)
+# from volume.yaml (volume.servers, or volume.instances; default 1), as the
+# bootstrap counts them; the actual logic lives in run.sh, which does its
+# own quoting once it's executing. An unreadable configuration starts one
+# line, whose bootstrap then reports the error in weed.log.
+INSTANCES=$("${SYNOPKG_PKGDEST}/bin/synology-volume-bootstrap" --config "${VOLUME_YAML}" --print-server-count 2>/dev/null) || INSTANCES=1
 case "${INSTANCES}" in
-    ''|*[!0-9]*) INSTANCES=1 ;;
+    ''|*[!0-9]*|0) INSTANCES=1 ;;
 esac
 SERVICE_COMMAND="${SYNOPKG_PKGDEST}/bin/run.sh 0"
 i=1
@@ -32,10 +34,35 @@ done
 # Limits are owned by conf/systemd/pkg-seaweedfs-volume.service. DSM acquires
 # that unit as a package resource; these unprivileged hooks cannot edit /etc.
 
+# The wizard's "Volume servers" step (wizard/servers-step.sh) asks, for each
+# DSM volume, whether to run a server there, from which directory and with
+# what memory budget. Checked rows become volume.servers, in volume order;
+# servers that stay keep their ports. Nothing checked keeps volume.yaml as is.
+# register-service.sh (administrator) then creates new directories and
+# applies the summed memory limit.
+apply_wizard_servers() {
+    spec=
+    for n in $(env | sed -n 's/^wizard_server_volume\([0-9][0-9]*\)=true$/\1/p' | sort -n); do
+        eval "dir=\${wizard_server_volume${n}_dir:-}"
+        eval "mb=\${wizard_server_volume${n}_memory_mb:-}"
+        case "$dir" in
+            *,*|*=*|*..*) echo "volume server directory $dir is not a plain path" >&2; return 1 ;;
+            "/volume$n/"?*) ;;
+            *) echo "volume server directory $dir is not on /volume$n" >&2; return 1 ;;
+        esac
+        case "$mb" in
+            ''|*[!0-9]*) echo "memory for $dir must be a whole number of MiB" >&2; return 1 ;;
+        esac
+        spec="$spec${spec:+,}$dir=$mb"
+    done
+    [ -n "$spec" ] || return 0
+    "${SYNOPKG_PKGDEST}/bin/synology-volume-bootstrap" --config "${VOLUME_YAML}" --set-servers "$spec"
+}
+
 service_prestart() {
     # Remove stale argv files so instances > 0 wait for THIS start's
     # bootstrap render instead of exec-ing against old master addresses.
-    rm -f "${RUN_DIR}/argv" "${RUN_DIR}"/argv.*
+    rm -f "${RUN_DIR}/argv" "${RUN_DIR}"/argv.* "${RUN_DIR}"/gomemlimit*
 }
 
 service_postinst() {
@@ -104,6 +131,7 @@ service_postinst() {
 
         chown "${SC_USER:-sc-${SYNOPKG_PKGNAME}}" "${VOLUME_YAML}"
         chmod 600 "${VOLUME_YAML}"
+        apply_wizard_servers
     fi
 }
 
@@ -117,5 +145,5 @@ service_preuninst() {
 service_postupgrade() {
     # Recreate state directories in case ownership/perms drifted.
     install -d -m 700 -o "${SC_USER:-sc-${SYNOPKG_PKGNAME}}" "${KUBE_DIR}" "${TLS_DIR}" "${RUN_DIR}" "${OCI_DIR}"
-
+    apply_wizard_servers
 }

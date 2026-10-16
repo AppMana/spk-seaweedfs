@@ -168,9 +168,51 @@ soft limit and upload/download budgets from the effective cgroup limit, capped
 at physical RAM. With 5 GiB available this means a 4.5 GiB Go soft limit and
 2496 MiB upload / 832 MiB download admission. The read buffer remains 1 MiB.
 
-Multiple instances share one package cgroup: they retain a conservative 3072 MiB
-Go budget **divided by `volume.instances`** (1536 MiB each for two), with admission
-derived from each process's budget. Otherwise each process would independently
+### One server per DSM volume
+
+`volume.servers` runs one `weed volume` process per entry, each from its own
+directory (normally its own DSM volume, so each disk is a separate data node
+in the same rack) with its own ports, `-metricsPort`, `max` and memory budget:
+
+```yaml
+volume:
+  ip: 192.0.2.20
+  rack: nas
+  metricsPort: 9325        # first server's default; +i for the others
+  servers:
+    - dir: /volume1/seaweedfs
+      port: 8080
+      grpcPort: 18080
+      memoryMB: 3072
+    - dir: /volume2/seaweedfs   # port 8081, grpcPort 18081, metricsPort 9326
+```
+
+It replaces `volume.dir` and `volume.instances`. Per-server flags (`-dir`,
+`-port`, `-port.grpc`, `-metricsPort`, `-max`, `-publicUrl`, `-disk`) cannot be
+shared `extraFlags`. A server's ports are its identity in the cluster topology:
+a server that stays keeps them, and a new one takes ports above every port used
+before, so it never takes over a removed server's identity.
+
+The install and upgrade wizards' **Volume servers** step lists every mounted
+DSM volume with a checkbox, the server's directory and its memory budget,
+pre-filled from the current configuration. Leaving every box unchecked keeps the
+current servers. Unchecking a server stops it; its directory and data stay.
+Run `register-service.sh` as an administrator afterwards, as after every
+install or upgrade: it creates new server directories (only under a mounted
+`/volumeN`) for the package user and applies the memory limit below.
+
+**Memory.** Each server's `memoryMB` (default 1536) is its Go soft limit
+(`GOMEMLIMIT`); the core derives its upload and download admission from it.
+Memory grows with the volumes a server holds: about 2 MB each with a LevelDB
+index (a server with 746 volumes measured 1.4 GB resident, 2.3 GB peak). The
+package cgroup is shared, and cgroup v1 also charges page cache to it, so
+`register-service.sh` sets the unit's `MemoryLimit` to the sum of the budgets
+plus 1024 MiB of page cache per server (a drop-in beside the unit); a single
+legacy `volume.dir` server keeps the unit's own 5 G limit.
+
+`volume.instances` (several servers in one directory) still divides a
+conservative 3072 MiB Go budget among its processes (1536 MiB each for two),
+with admission derived from each process's budget. Otherwise each process would independently
 claim 90% of the same shared limit. An explicit `GOMEMLIMIT` remains a per-process
 override; `volume.extraFlags` can explicitly override admission. Empty
 `GOMEMLIMIT` is removed to enable automatic sizing. The Go limit is soft and

@@ -93,6 +93,13 @@ type config struct {
 		// (e.g. "020") needs only one instance. Instance i serves port+i / grpcPort+i
 		// from <dir>/v<i>.
 		Instances int `yaml:"instances"`
+		// MetricsPort, when set, is passed as -metricsPort; with
+		// volume.servers it is the first server's default, +i after.
+		MetricsPort int `yaml:"metricsPort"`
+		// Servers runs one `weed volume` per entry, each from its own
+		// directory with its own ports and memory budget (servers.go).
+		// Mutually exclusive with dir and instances.
+		Servers []serverConfig `yaml:"servers"`
 	} `yaml:"volume"`
 	MTLS struct {
 		SecretName string `yaml:"secretName"`
@@ -131,11 +138,23 @@ func main() {
 		weedBinOut = flag.String("weed-bin-out", os.Getenv("BOOTSTRAP_WEED_BIN_OUT"), "file to write the resolved weed binary path into (empty when weed.image is unset)")
 		printOnly  = flag.Bool("print-only", false, "print argv to stdout, do not write any file")
 		timeout    = flag.Duration("timeout", 30*time.Second, "kube discovery timeout")
+		// Local queries and edits for the service scripts and the DSM
+		// wizard; none of them contacts Kubernetes.
+		printCount   = flag.Bool("print-server-count", false, "print the number of volume servers and exit")
+		printLimit   = flag.Bool("print-memory-limit-mb", false, "print the package memory limit volume.servers needs (0: keep the unit's) and exit")
+		printServers = flag.Bool("print-servers", false, "print each server as dir<TAB>port<TAB>grpcPort<TAB>metricsPort<TAB>memoryMB and exit")
+		setSpec      = flag.String("set-servers", "", "rewrite volume.servers from \"dir[=memoryMB],...\" and exit")
 	)
 	flag.Parse()
 
 	if *configPath == "" {
 		fatal("missing --config (or $BOOTSTRAP_CONFIG)")
+	}
+	if *setSpec != "" {
+		if err := setServers(*configPath, *setSpec); err != nil {
+			fatal("set servers: %v", err)
+		}
+		return
 	}
 	cfg, err := loadConfig(*configPath)
 	if err != nil {
@@ -143,6 +162,20 @@ func main() {
 	}
 	if err := validate(cfg); err != nil {
 		fatal("invalid config: %v", err)
+	}
+	switch {
+	case *printCount:
+		fmt.Println(serverCount(cfg))
+		return
+	case *printLimit:
+		fmt.Println(packageMemoryLimitMB(cfg))
+		return
+	case *printServers:
+		for i := 0; i < serverCount(cfg); i++ {
+			v := instanceConfig(cfg, i).Volume
+			fmt.Printf("%s\t%d\t%d\t%d\t%d\n", v.Dir, v.Port, v.GRPCPort, v.MetricsPort, serverMemoryMB(cfg, i))
+		}
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
@@ -180,8 +213,8 @@ func main() {
 		if weedBin != "" {
 			fmt.Fprintf(os.Stderr, "weed binary: %s\n", weedBin)
 		}
-		for i := 0; i < cfg.Volume.Instances; i++ {
-			if cfg.Volume.Instances > 1 {
+		for i := 0; i < serverCount(cfg); i++ {
+			if serverCount(cfg) > 1 {
 				fmt.Printf("# instance %d\n", i)
 			}
 			for _, a := range renderArgs(instanceConfig(cfg, i), masters, tlsArgs) {
@@ -205,7 +238,12 @@ func main() {
 	} else if weedBin != "" {
 		fatal("weed.image set but --weed-bin-out (or $BOOTSTRAP_WEED_BIN_OUT) missing")
 	}
-	for i := 0; i < cfg.Volume.Instances; i++ {
+	// Memory limits are written before any argv file: run.sh instances > 0
+	// read theirs once their argv file appears.
+	if err := writeServerMemoryLimits(cfg, *outPath); err != nil {
+		fatal("write memory limits: %v", err)
+	}
+	for i := 0; i < serverCount(cfg); i++ {
 		icfg := instanceConfig(cfg, i)
 		if err := os.MkdirAll(icfg.Volume.Dir, 0o755); err != nil {
 			fatal("create volume dir for instance %d: %v", i, err)
@@ -218,7 +256,7 @@ func main() {
 			fatal("write argv for instance %d: %v", i, err)
 		}
 	}
-	fmt.Fprintf(os.Stderr, "wrote argv for %d instance(s) to %s\n", cfg.Volume.Instances, *outPath)
+	fmt.Fprintf(os.Stderr, "wrote argv for %d server(s) to %s\n", serverCount(cfg), *outPath)
 }
 
 // instanceConfig returns a copy of c adjusted for volume-server
@@ -229,6 +267,19 @@ func main() {
 // config is returned unchanged, preserving the existing on-disk layout
 // of deployments made before instances existed.
 func instanceConfig(c *config, i int) *config {
+	if len(c.Volume.Servers) > 0 {
+		s := c.Volume.Servers[i]
+		ic := *c
+		ic.Volume.Dir = s.Dir
+		ic.Volume.Port = s.Port
+		ic.Volume.GRPCPort = s.GRPCPort
+		ic.Volume.MetricsPort = s.MetricsPort
+		ic.Volume.Max = s.Max
+		ic.Volume.DiskType = s.DiskType
+		ic.Volume.PublicURL = fmt.Sprintf("%s:%d", c.Volume.IP, s.Port)
+		ic.Volume.Servers = nil
+		return &ic
+	}
 	if c.Volume.Instances <= 1 {
 		return c
 	}
@@ -271,8 +322,8 @@ func validate(c *config) error {
 	if c.Kube.MasterService != "" && c.Kube.MasterPort == 0 {
 		c.Kube.MasterPort = 9333
 	}
-	if c.Volume.Dir == "" {
-		return errors.New("volume.dir is required")
+	if len(c.Volume.Servers) == 0 && c.Volume.Dir == "" {
+		return errors.New("volume.dir or volume.servers is required")
 	}
 	if c.Volume.IP == "" {
 		return errors.New("volume.ip is required")
@@ -298,6 +349,11 @@ func validate(c *config) error {
 	}
 	if c.Volume.Max == 0 {
 		c.Volume.Max = 1000
+	}
+	if len(c.Volume.Servers) > 0 {
+		if err := validateServers(c); err != nil {
+			return err
+		}
 	}
 	if c.Volume.Instances == 0 {
 		c.Volume.Instances = 1
@@ -543,6 +599,9 @@ func renderArgs(c *config, masters string, tlsArgs []string) []string {
 	}
 	if c.Volume.Index != "" {
 		args = append(args, "-index="+c.Volume.Index)
+	}
+	if c.Volume.MetricsPort > 0 {
+		args = append(args, fmt.Sprintf("-metricsPort=%d", c.Volume.MetricsPort))
 	}
 	args = append(args, tlsArgs...)
 	args = append(args, c.Volume.ExtraFlags...)

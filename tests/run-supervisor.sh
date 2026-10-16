@@ -27,11 +27,11 @@ exit 137
 EOF
 chmod +x "$TMP/fake-weed"
 
-# run_case <name> <expected GOMEMLIMIT> [volume.yaml instances value]
+# run_case <name> <expected GOMEMLIMIT> [the bootstrap's gomemlimit.1 for this server]
 run_case() {
   CASE=$1
   EXPECT=$2
-  INSTANCES=${3:-}
+  BUDGET=${3:-}
 
   CASEDIR="$TMP/$CASE"
   PKGVAR="$CASEDIR/var"
@@ -39,7 +39,7 @@ run_case() {
   mkdir -p "$PKGVAR/run" "$PKGVAR/log" "$PKGDEST/bin"
   printf '%s\n' '-dir=/unused' >"$PKGVAR/run/argv.1"
   printf '%s\n' "$TMP/fake-weed" >"$PKGVAR/run/weed_bin"
-  [ -z "$INSTANCES" ] || printf 'volume:\n  instances: %s\n' "$INSTANCES" >"$PKGVAR/volume.yaml"
+  [ -z "$BUDGET" ] || printf '%s\n' "$BUDGET" >"$PKGVAR/run/gomemlimit.1"
 
   set +e
   SYNOPKG_PKGVAR="$PKGVAR" \
@@ -67,18 +67,19 @@ run_case() {
   grep -q 'weed exited cleanly; not restarting' "$PKGVAR/log/weed.1.log"
 }
 
-# Single-instance packages must let the core derive memory from DSM's cgroup.
+# A lone server has no budget file and lets the core derive memory from
+# DSM's cgroup; an empty override is removed rather than passed through.
 unset GOMEMLIMIT
 run_case single unset
-run_case explicit_single unset 1
-GOMEMLIMIT='' run_case empty_override unset 1
+GOMEMLIMIT='' run_case empty_override unset
 
-# Multi-instance remains supported for policies with a same-rack copy or for
-# explicit sharding. The budget is divided rather than applied per instance, so
-# two servers cannot target 6 GiB inside the 5 G MemoryMax the package installs.
-# AppMana's current 020 placement uses one NAS instance.
-GOMEMLIMIT='' run_case two_instances 1536MiB 2
-GOMEMLIMIT=2048MiB run_case explicit_budget 2048MiB 2
-GOMEMLIMIT=2048MiB run_case explicit_single_budget 2048MiB 1
+# With several servers the bootstrap writes each one's budget (volume.servers
+# memoryMB, or volume.instances' divided share); the package cgroup limit is
+# their sum, so no two processes target the same memory.
+run_case server_budget 3072MiB 3072MiB
+GOMEMLIMIT='' run_case server_budget_empty_override 1536MiB 1536MiB
+# An operator's explicit GOMEMLIMIT stays a per-process override.
+GOMEMLIMIT=2048MiB run_case explicit_budget 2048MiB 1536MiB
+GOMEMLIMIT=2048MiB run_case explicit_single_budget 2048MiB
 
 echo "run.sh supervisor contract passed"
