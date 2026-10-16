@@ -16,24 +16,14 @@
 # argv file to appear (service_prestart removed stale ones) and exec.
 set -e
 
-# Single-instance packages derive Go and admission limits in the core from
-# DSM's effective cgroup limit. An empty environment variable must be removed:
-# the core treats even a present-but-empty GOMEMLIMIT as an explicit override.
-# Multiple processes share the package cgroup, so retain a divided conservative
-# budget in that configuration; otherwise each would claim 90% of the SAME
-# limit. Explicit operator overrides remain per-process and are preserved.
-if [ -z "${GOMEMLIMIT:-}" ]; then
-  unset GOMEMLIMIT
-  GOMEM_INSTANCES=$(sed -n 's/^[[:space:]]*instances:[[:space:]]*//p' \
-    "${SYNOPKG_PKGVAR}/volume.yaml" 2>/dev/null | head -1)
-  case "${GOMEM_INSTANCES}" in
-    ''|*[!0-9]*|0) GOMEM_INSTANCES=1 ;;
-  esac
-  if [ "$GOMEM_INSTANCES" -gt 1 ]; then
-    GOMEMLIMIT="$((3072 / GOMEM_INSTANCES))MiB"
-    export GOMEMLIMIT
-  fi
-fi
+# A lone server derives Go and admission limits in the core from DSM's
+# effective cgroup limit. An empty environment variable must be removed: the
+# core treats even a present-but-empty GOMEMLIMIT as an explicit override.
+# Several servers share the package cgroup, so the bootstrap writes each one's
+# own budget (gomemlimit[.i], read below once argv exists); otherwise each
+# would claim 90% of the SAME limit. Explicit operator overrides remain
+# per-process and are preserved.
+[ -n "${GOMEMLIMIT:-}" ] || unset GOMEMLIMIT
 
 IDX="${1:-0}"
 RUN_DIR="${SYNOPKG_PKGVAR}/run"
@@ -85,6 +75,13 @@ else
     echo "argv for instance ${IDX} never appeared (bootstrap failed?)" >>"${LOG_FILE}"
     exit 1
   fi
+fi
+
+GOMEM_FILE="${RUN_DIR}/gomemlimit"
+[ "$IDX" != "0" ] && GOMEM_FILE="${GOMEM_FILE}.${IDX}"
+if [ -z "${GOMEMLIMIT:-}" ] && [ -s "${GOMEM_FILE}" ]; then
+  GOMEMLIMIT=$(head -n 1 "${GOMEM_FILE}")
+  export GOMEMLIMIT
 fi
 
 RUN_WEED="${WEED_BIN}"

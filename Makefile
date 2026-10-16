@@ -101,6 +101,7 @@ stage: bootstrap
 	mkdir -p $(SPKSRC_DIR)/cross $(SPKSRC_DIR)/diyspk
 	cp -a $(REPO_ROOT)/cross/seaweedfs $(SPKSRC_DIR)/cross/seaweedfs
 	cp -a $(REPO_ROOT)/diyspk/seaweedfs $(SPKSRC_DIR)/diyspk/seaweedfs
+	sh $(REPO_ROOT)/diyspk/seaweedfs/src/wizard/assemble-wizards.sh $(REPO_ROOT)/diyspk/seaweedfs/src/wizard $(SPKSRC_DIR)/diyspk/seaweedfs/src/wizard
 
 # Build the SPK. Delegates to spksrc's per-arch target.
 spk: stage

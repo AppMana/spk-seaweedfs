@@ -1,0 +1,10 @@
+[
+   {
+      "step_title": "Upgrade",
+      "items": [
+         {
+            "desc": "Existing /var/packages/seaweedfs/var/volume.yaml is preserved, and the new weed binary is used from the next start. The next step lists this NAS's volumes: check a volume to run a volume server on it, or leave every box unchecked to keep the current servers."
+         }
+      ]
+   }
+]

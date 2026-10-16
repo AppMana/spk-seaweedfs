@@ -44,6 +44,16 @@ volume:
   # instances > 1, publicUrl is derived per instance and the value
   # above is ignored. max applies PER INSTANCE.
   instances: 1
+  # Alternatively, one server per DSM volume (the wizard's "Volume
+  # servers" step writes this and removes dir/instances):
+  # servers:
+  #   - dir: /volume1/seaweedfs
+  #     port: 8080          # ports are a server's identity; never renumber
+  #     grpcPort: 18080
+  #     metricsPort: 9325   # optional; also volume.metricsPort, +i per server
+  #     max: 2000           # default volume.max
+  #     memoryMB: 3072      # Go budget (GOMEMLIMIT); default 1536
+  #   - dir: /volume2/seaweedfs
 
 mtls:
   secretName: @MTLS_SECRET@
