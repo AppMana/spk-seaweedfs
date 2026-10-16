@@ -28,7 +28,7 @@ sync() { echo sync >> "$TRACE"; return "$SYNC_STATUS"; }
            'SYNC_STATUS': str(sync_status)}, input='', text=True, capture_output=True)
             return result, trace.read_text().splitlines()
 
-    def run_with_servers(self, dirs, limit, existing=()):
+    def run_with_servers(self, dirs, limit, existing=(), rejected=False):
         """Register a package whose bootstrap reports these server dirs."""
         script = Path(__file__).resolve().parents[1] / 'diyspk/seaweedfs/src/register-service.sh'
         with tempfile.TemporaryDirectory() as directory:
@@ -44,6 +44,7 @@ sync() { echo sync >> "$TRACE"; return "$SYNC_STATUS"; }
                 (fs / d.lstrip('/')).mkdir(parents=True)
             bootstrap = pkg / 'target/bin/synology-volume-bootstrap'
             bootstrap.write_text('#!/bin/sh\n'
+                                 '[ -z "$REJECT" ] || [ "$3" != --print-servers ] || { echo "invalid config" >&2; exit 1; }\n'
                                  'case "$3" in\n'
                                  '--print-servers) printf "%b" "$LISTING" ;;\n'
                                  '--print-memory-limit-mb) echo "$LIMIT" ;;\n'
@@ -69,7 +70,8 @@ sync() { echo sync >> "$TRACE"; return "$SYNC_STATUS"; }
             result = subprocess.run(['sh', '-ec', stubs], env={
                 **os.environ, 'TRACE': str(trace), 'SCRIPT': str(script),
                 'SEAWEEDFS_PKG_DIR': str(pkg), 'SEAWEEDFS_UNIT_DIR': str(units),
-                'SEAWEEDFS_FS_ROOT': str(fs), 'LISTING': listing, 'LIMIT': str(limit)},
+                'SEAWEEDFS_FS_ROOT': str(fs), 'LISTING': listing, 'LIMIT': str(limit),
+                'REJECT': '1' if rejected else ''},
                 input='', text=True, capture_output=True)
             dropin = units / 'pkg-seaweedfs-volume.service.d/memory.conf'
             created = sorted(str(p.relative_to(fs)) for p in fs.glob('volume*/*'))
@@ -98,6 +100,12 @@ sync() { echo sync >> "$TRACE"; return "$SYNC_STATUS"; }
         result, commands, dropin, created = self.run_with_servers(['/etc/seaweed'], 3072)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('not under a DSM volume', result.stderr)
+        self.assertNotIn('DSM_SERVICE_REGISTERED:', result.stdout)
+        self.assertIsNone(dropin)
+
+    def test_a_configuration_the_bootstrap_rejects_stops_registration(self):
+        result, commands, dropin, created = self.run_with_servers(['/volume1/seaweed'], 3072, rejected=True)
+        self.assertNotEqual(result.returncode, 0)
         self.assertNotIn('DSM_SERVICE_REGISTERED:', result.stdout)
         self.assertIsNone(dropin)
 

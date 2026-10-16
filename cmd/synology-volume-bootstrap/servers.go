@@ -326,7 +326,7 @@ func setServers(file, spec string) error {
 	if err := yaml.Unmarshal([]byte(out.String()), &check); err != nil {
 		return err
 	}
-	if err := validate(&check); err != nil {
+	if err := validateLayout(&check); err != nil {
 		return fmt.Errorf("rewritten configuration is invalid: %w", err)
 	}
 	info, err := os.Stat(file)
