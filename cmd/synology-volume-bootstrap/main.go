@@ -160,7 +160,11 @@ func main() {
 	if err != nil {
 		fatal("load config: %v", err)
 	}
-	if err := validate(cfg); err != nil {
+	if *printCount || *printLimit || *printServers {
+		if err := validateLayout(cfg); err != nil {
+			fatal("invalid config: %v", err)
+		}
+	} else if err := validate(cfg); err != nil {
 		fatal("invalid config: %v", err)
 	}
 	switch {
@@ -322,20 +326,30 @@ func validate(c *config) error {
 	if c.Kube.MasterService != "" && c.Kube.MasterPort == 0 {
 		c.Kube.MasterPort = 9333
 	}
-	if len(c.Volume.Servers) == 0 && c.Volume.Dir == "" {
-		return errors.New("volume.dir or volume.servers is required")
-	}
 	if c.Volume.IP == "" {
 		return errors.New("volume.ip is required")
+	}
+	if err := validateLayout(c); err != nil {
+		return err
+	}
+	if c.Volume.PublicURL == "" {
+		c.Volume.PublicURL = fmt.Sprintf("%s:%d", c.Volume.IP, c.Volume.Port)
+	}
+	return nil
+}
+
+// validateLayout checks and defaults only where the servers run: their
+// directories, ports and limits. The service scripts and the wizard query the
+// layout before the cluster connection is configured (a CLI install has none).
+func validateLayout(c *config) error {
+	if len(c.Volume.Servers) == 0 && c.Volume.Dir == "" {
+		return errors.New("volume.dir or volume.servers is required")
 	}
 	if c.Volume.Port == 0 {
 		c.Volume.Port = 8080
 	}
 	if c.Volume.GRPCPort == 0 {
 		c.Volume.GRPCPort = c.Volume.Port + 10000
-	}
-	if c.Volume.PublicURL == "" {
-		c.Volume.PublicURL = fmt.Sprintf("%s:%d", c.Volume.IP, c.Volume.Port)
 	}
 	if c.Volume.DataCenter == "" {
 		c.Volume.DataCenter = "synology"

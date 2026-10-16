@@ -177,10 +177,14 @@ func TestDSMKubernetesTopologyIsExplicit(t *testing.T) {
 // This is the real Kubernetes backend for DSM join/lifecycle tests, not a mock
 // API or a kind cluster. Successful API setup alone is not NAS qualification.
 func TestLiveDSMKubernetesJoin(t *testing.T) {
-	runDSMKubernetesJoin(t, nil)
+	runDSMKubernetesJoin(t, nil, nil)
 }
 
-func runDSMKubernetesJoin(t *testing.T, upgrade *dsmPackageUpgrade) {
+// dsmJoinedTransition replaces the package upgrade as the transition between
+// original-data verification and readback; it runs after the upgrade.
+type dsmJoinedTransition func(ctx context.Context, lab *client.Session, cluster func(args ...string) []byte)
+
+func runDSMKubernetesJoin(t *testing.T, upgrade *dsmPackageUpgrade, after dsmJoinedTransition) {
 	t.Helper()
 	path := os.Getenv("DSM_KUBERNETES_INPUTS")
 	if path == "" {
@@ -427,6 +431,17 @@ done
 test "$found" = 1
 grep -E 'memory limits: available [1-9][0-9]* .*GOMEMLIMIT env false, Go memory limit [1-9][0-9]* \(set true\), upload admission [1-9][0-9]* MiB \(auto true\), download admission [1-9][0-9]* MiB \(auto true\)' /var/packages/seaweedfs/var/log/weed.log
 `)
+		}
+		if after != nil {
+			if upgrade == nil {
+				t.Fatal("a joined transition requires the package upgrade inputs")
+			}
+			upgrade.apply(t, ctx, lab, in.SPKVersion, in.WeedSHA256)
+			wait("sh", "-ec", "curl -fsS http://192.0.2.30:9333/dir/status | grep -F '192.0.2.20:8080'")
+			assertResources()
+			verifyDSMDataRecoveryAcross(t, ctx, lab, func() { after(ctx, lab, run) })
+			t.Log("DSM_KUBERNETES_JOIN_PASS: authenticated discovery, real topology membership after the joined transition")
+			return
 		}
 		if upgrade == nil {
 			assertResources()

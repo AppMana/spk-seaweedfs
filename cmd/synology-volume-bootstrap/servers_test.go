@@ -249,3 +249,19 @@ func TestSetServers_AdoptsLegacySingleServer(t *testing.T) {
 		t.Fatalf("the per-server metrics flag must leave the shared flags: %q", c.Volume.ExtraFlags)
 	}
 }
+
+// A CLI install has no cluster connection yet; the service scripts and the
+// wizard still read where its servers run.
+func TestValidateLayout_NeedsNoClusterConfiguration(t *testing.T) {
+	c := &config{}
+	c.Volume.Servers = []serverConfig{{Dir: "/volume1/seaweed"}, {Dir: "/volume2/seaweed"}}
+	if err := validateLayout(c); err != nil {
+		t.Fatalf("layout without a cluster connection: %v", err)
+	}
+	if got := packageMemoryLimitMB(c); got != 2*(defaultServerMemoryMB+pageCacheMBPerServer) {
+		t.Fatalf("packageMemoryLimitMB = %d", got)
+	}
+	if err := validate(c); err == nil {
+		t.Fatal("starting a server still requires the cluster connection")
+	}
+}

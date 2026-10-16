@@ -20,6 +20,11 @@ func TestLiveDSMKubernetesDataUpgrade(t *testing.T) {
 	if os.Getenv("DSM_KUBERNETES_INPUTS") == "" {
 		t.Skip("requires explicit pinned offline Kubernetes inputs and fresh private DSM disks")
 	}
+	runDSMKubernetesJoin(t, dsmUpgradeFromEnv(t), nil)
+}
+
+func dsmUpgradeFromEnv(t *testing.T) *dsmPackageUpgrade {
+	t.Helper()
 	u := &dsmPackageUpgrade{
 		baseline:    pinnedArtifact(t, "DSM_BASELINE_SPK", "DSM_BASELINE_SPK_SHA256"),
 		candidate:   pinnedArtifact(t, "DSM_CANDIDATE_SPK", "DSM_CANDIDATE_SPK_SHA256"),
@@ -36,7 +41,7 @@ func TestLiveDSMKubernetesDataUpgrade(t *testing.T) {
 	if u.seedVersion != "" && !regexp.MustCompile(`^[0-9]+(\.[0-9]+)*-[0-9]+$`).MatchString(u.seedVersion) {
 		t.Fatal("invalid explicit seed package version")
 	}
-	runDSMKubernetesJoin(t, u)
+	return u
 }
 
 func (u *dsmPackageUpgrade) installBaseline(t *testing.T, ctx context.Context, lab *client.Session) {

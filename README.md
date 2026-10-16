@@ -53,7 +53,7 @@ See [docs/install-cli.md](docs/install-cli.md) for the SSH-based path. The DSM P
 
 ## Package qualification and publication
 
-`make test` requires all 25 reviewed bootstrap tests to pass (no missing tests
+`make test` requires all 32 reviewed bootstrap tests to pass (no missing tests
 or skips), plus supervisor, source, metadata and runner-contract checks. PR CI
 also builds the x64 DSM 7.2 SPK and inspects its INFO version/architecture,
 executable lifecycle hooks, x86-64 payloads and component hashes. Run

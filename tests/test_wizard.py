@@ -138,6 +138,19 @@ class Wizard(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(config.read_text(), LEGACY)
 
+    def test_layout_queries_work_before_the_cluster_is_configured(self):
+        # A CLI fresh install has no wizard answers: volume.yaml lacks the
+        # Kubernetes connection, yet registration must still read the layout.
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / 'volume.yaml'
+            config.write_text('kube:\n  apiserver: ""\n  tokenFile: /t\n  namespace: seaweedfs\n'
+                              'volume:\n  dir: /volume1/seaweedfs\n  ip: ""\n  port: 8080\n  grpcPort: 18080\n  instances: 1\n')
+            for query, want in (('--print-server-count', '1\n'), ('--print-memory-limit-mb', '0\n'),
+                                ('--print-servers', '/volume1/seaweedfs\t8080\t18080\t0\t0\n')):
+                result = subprocess.run([str(self.bootstrap), '--config', str(config), query],
+                                        text=True, capture_output=True)
+                self.assertEqual((result.returncode, result.stdout), (0, want), (query, result.stderr))
+
     def test_a_directory_off_its_volume_is_refused(self):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / 'volume.yaml'

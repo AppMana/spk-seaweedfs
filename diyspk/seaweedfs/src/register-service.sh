@@ -29,7 +29,11 @@ config="$pkg/var/volume.yaml"
 # for the package user; only a plain /volumeN/<path> without symlinks is
 # accepted, so the package's configuration cannot direct root elsewhere.
 if [ -f "$config" ]; then
-  "$bootstrap" --config "$config" --print-servers | while IFS="$(printf '\t')" read -r dir _; do
+  # Captured, not piped, so a configuration the bootstrap rejects stops
+  # registration instead of looking like an empty server list.
+  servers=$("$bootstrap" --config "$config" --print-servers)
+  printf '%s\n' "$servers" | while IFS="$(printf '\t')" read -r dir _; do
+    [ -n "$dir" ] || continue
     case "$dir" in
       /volume[0-9]*/?*) ;;
       *) echo "volume server directory $dir is not under a DSM volume" >&2; exit 1 ;;
