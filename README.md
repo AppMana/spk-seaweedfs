@@ -74,7 +74,18 @@ so the already-tested bytes are reused; rerunning the build requires fresh
 qualification. This temporary promotion gate does not itself execute DSM tests.
 Never set the variable merely because source tests or package inspection pass.
 
-The current package definition is the **4.48-2 candidate**, pinning
+The current package definition is the **4.48-5 candidate**: the 4.48-2 SeaweedFS
+and go-fuse pins (the same `weed` binary) with `volume.servers`, one server per
+DSM volume chosen in the install/upgrade wizard, each with its own ports and memory
+budget, and the unit's memory limit set to their sum. The CI artifact with SHA-256
+`641fb8b06986e6b1b1568d7234bb9f7e679d6ce837ad4303def470fbf9b0fbfb` passed the
+Labcontainers DSM lifecycle gate (`make test-dsm-complete`: forward upgrade from
+4.47-15, readback across restart and abrupt crash, Kubernetes join, uninstall
+retention, fresh install) and the two-server gate (`make test-dsm-volume-servers`).
+The 4.48-2 to 4.48-5 upgrade path itself was not exercised: the upgrade gate
+requires a baseline with a different `weed` binary.
+
+The 4.48-2 package definition pinned
 SeaweedFS `27afab3bb0b39726df5f17afa4f1454203bba69f` and go-fuse
 `6ead27e20708423a00718812de796241659ad387`. Over 4.48-1 it holds each
 upload body in exactly its admitted bytes (a full 4 MiB body no longer
