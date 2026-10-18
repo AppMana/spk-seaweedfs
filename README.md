@@ -74,6 +74,12 @@ so the already-tested bytes are reused; rerunning the build requires fresh
 qualification. This temporary promotion gate does not itself execute DSM tests.
 Never set the variable merely because source tests or package inspection pass.
 
+The upgrade gate swaps the `weed` binary under existing data by default and
+refuses a candidate with the baseline's `weed`. Packaging-only changes (wizard,
+service scripts, registration) set `DSM_PACKAGE_ONLY_UPGRADE=1`, which instead
+requires the identical `weed` and a different package version; the mode is
+explicit, never inferred from equal hashes.
+
 Downgrading to a legacy SPK is not a deployment requirement. Keep backups and
 the retained baseline for compatibility investigations; do not uninstall a
 working candidate to qualify an unnecessary downgrade.
