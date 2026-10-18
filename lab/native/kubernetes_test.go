@@ -210,8 +210,10 @@ func runDSMKubernetesJoin(t *testing.T, upgrade *dsmPackageUpgrade, after dsmJoi
 	if in.SPKVersion == "" || len(in.WeedSHA256) != 64 || strings.Trim(in.WeedSHA256, "0123456789abcdef") != "" {
 		t.Fatal("explicit installed package version and weed hash required")
 	}
-	if upgrade != nil && (in.SPKVersion == upgrade.version || in.WeedSHA256 == upgrade.weedHash) {
-		t.Fatal("data upgrade requires distinct baseline/candidate package versions and binaries")
+	if upgrade != nil {
+		if err := dsmUpgradePair(upgrade.version, upgrade.weedHash, in.SPKVersion, in.WeedSHA256, upgrade.packageOnly); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for path, hash := range map[string]string{in.Media: in.MediaSHA256, in.DiskScript: in.DiskScriptSHA256} {
 		if err := verifyDiskFile(path, hash); err != nil {

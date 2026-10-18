@@ -82,8 +82,18 @@ budget, and the unit's memory limit set to their sum. The CI artifact with SHA-2
 Labcontainers DSM lifecycle gate (`make test-dsm-complete`: forward upgrade from
 4.47-15, readback across restart and abrupt crash, Kubernetes join, uninstall
 retention, fresh install) and the two-server gate (`make test-dsm-volume-servers`).
-The 4.48-2 to 4.48-5 upgrade path itself was not exercised: the upgrade gate
-requires a baseline with a different `weed` binary.
+It also passed both gates as a package-only upgrade from the deployed 4.48-2
+(SHA-256 `c638bc4711c71397494f20ec371f74e7de47d537d86691c4513e62063a90a99d`), the
+production upgrade path: the same lifecycle (readback after the upgrade, restart
+and abrupt crash, retained `volume.yaml`/kube token/CA, registered unit limits,
+Kubernetes join, uninstall retention, fresh install), and on a separate private
+VM the switch to two servers after that upgrade.
+
+The upgrade gate swaps the `weed` binary under existing data by default and
+refuses a candidate with the baseline's `weed`. Packaging-only changes (wizard,
+service scripts, registration) set `DSM_PACKAGE_ONLY_UPGRADE=1`, which instead
+requires the identical `weed` and a different package version; the mode is
+explicit, never inferred from equal hashes.
 
 The 4.48-2 package definition pinned
 SeaweedFS `27afab3bb0b39726df5f17afa4f1454203bba69f` and go-fuse
