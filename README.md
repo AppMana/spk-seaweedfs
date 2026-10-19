@@ -74,8 +74,18 @@ so the already-tested bytes are reused; rerunning the build requires fresh
 qualification. This temporary promotion gate does not itself execute DSM tests.
 Never set the variable merely because source tests or package inspection pass.
 
-The current package definition is the **4.48-5 candidate**: the 4.48-2 SeaweedFS
-and go-fuse pins (the same `weed` binary) with `volume.servers`, one server per
+The current package definition is **4.48-6**: SeaweedFS
+`6a570503378e408c57c74f36efda148c5950595c`, the build every component of the
+AppMana cluster runs, with the 4.48-5 packaging and go-fuse pin. Over 27afab3bb it
+changes only the filer, mount and shell; the volume server code is identical.
+The CI artifact with SHA-256
+`640ec78f795eb91362b3d8146d5ce6933526dc40de8486ac85872cc57b2d9e13` (`weed`
+`1cc2ff36cd5f6a9030f0e54b5b5aaa2bbffd59943d53e53944993d720ea8a6e4`) passed
+`make test-dsm-complete` (366 s) and `make test-dsm-volume-servers` (360 s) as a
+binary upgrade from the deployed 4.48-5.
+
+4.48-5 kept the 4.48-2 SeaweedFS
+and go-fuse pins (the same `weed` binary) and added `volume.servers`, one server per
 DSM volume chosen in the install/upgrade wizard, each with its own ports and memory
 budget, and the unit's memory limit set to their sum. The CI artifact with SHA-256
 `641fb8b06986e6b1b1568d7234bb9f7e679d6ce837ad4303def470fbf9b0fbfb` passed the
