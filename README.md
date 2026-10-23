@@ -74,7 +74,17 @@ so the already-tested bytes are reused; rerunning the build requires fresh
 qualification. This temporary promotion gate does not itself execute DSM tests.
 Never set the variable merely because source tests or package inspection pass.
 
-The current package definition is **4.48-7**: the 4.48-6 `weed` with packaging
+The current package definition is **4.48-8**: the 4.48-7 package with memory
+sized from the installed RAM (see Resource limits): the package limit is the
+installed memory less DSM's share, and servers without `memoryMB` share it by
+the volumes each holds; `auto` in the wizard. The CI artifact with SHA-256
+`357915b2b3430858143297d8445c8edd2bb04832ca31fcd5e38a61291db0fe1a` (`weed`
+`1cc2ff36cd5f6a9030f0e54b5b5aaa2bbffd59943d53e53944993d720ea8a6e4`) passed
+`make test-dsm-complete` (364 s) and `make test-dsm-volume-servers` (360 s;
+on the 4 GB lab DSM a fixed 1024 MiB server beside an automatic one at
+379 MiB, limit 1870 MiB) as a package-only upgrade from the deployed 4.48-7.
+
+4.48-7: the 4.48-6 `weed` with packaging
 that keeps volume data out of DSM shared folders. The install wizard no longer
 asks for a shared folder and the package declares no `data-share` resource, so
 DSM creates none; a fresh install runs its server from `/volumeN/@seaweedfs` on
