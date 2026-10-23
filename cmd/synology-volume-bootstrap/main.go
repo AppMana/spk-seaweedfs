@@ -142,8 +142,8 @@ func main() {
 		// wizard; none of them contacts Kubernetes.
 		printCount   = flag.Bool("print-server-count", false, "print the number of volume servers and exit")
 		printLimit   = flag.Bool("print-memory-limit-mb", false, "print the package memory limit volume.servers needs (0: keep the unit's) and exit")
-		printServers = flag.Bool("print-servers", false, "print each server as dir<TAB>port<TAB>grpcPort<TAB>metricsPort<TAB>memoryMB and exit")
-		setSpec      = flag.String("set-servers", "", "rewrite volume.servers from \"dir[=memoryMB],...\" and exit")
+		printServers = flag.Bool("print-servers", false, "print each server as dir<TAB>port<TAB>grpcPort<TAB>metricsPort<TAB>budgetMB<TAB>configuredMB (0: automatic) and exit")
+		setSpec      = flag.String("set-servers", "", "rewrite volume.servers from \"dir[=memoryMB|auto],...\" and exit")
 	)
 	flag.Parse()
 
@@ -172,12 +172,27 @@ func main() {
 		fmt.Println(serverCount(cfg))
 		return
 	case *printLimit:
-		fmt.Println(packageMemoryLimitMB(cfg))
+		limit, err := packageMemoryLimitMB(cfg)
+		if err != nil {
+			fatal("memory: %v", err)
+		}
+		fmt.Println(limit)
 		return
 	case *printServers:
+		budgets, err := serverBudgetsMB(cfg)
+		if err != nil {
+			fatal("memory: %v", err)
+		}
 		for i := 0; i < serverCount(cfg); i++ {
 			v := instanceConfig(cfg, i).Volume
-			fmt.Printf("%s\t%d\t%d\t%d\t%d\n", v.Dir, v.Port, v.GRPCPort, v.MetricsPort, serverMemoryMB(cfg, i))
+			budget, configured := 0, 0
+			if budgets != nil {
+				budget = budgets[i]
+			}
+			if i < len(cfg.Volume.Servers) {
+				configured = cfg.Volume.Servers[i].MemoryMB
+			}
+			fmt.Printf("%s\t%d\t%d\t%d\t%d\t%d\n", v.Dir, v.Port, v.GRPCPort, v.MetricsPort, budget, configured)
 		}
 		return
 	}

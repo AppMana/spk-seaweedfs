@@ -1,6 +1,6 @@
 SPK_NAME = seaweedfs
 SPK_VERS = 4.48
-SPK_REV = 7
+SPK_REV = 8
 SPK_ICON = src/seaweedfs.png
 
 DEPENDS = cross/seaweedfs
@@ -13,7 +13,7 @@ DISPLAY_NAME = SeaweedFS Volume
 DESCRIPTION = SeaweedFS volume server that joins an existing seaweedfs-operator-managed cluster. Reads cluster topology from the Kubernetes API via a service-account token, then runs the upstream weed volume daemon advertised on the LAN.
 HOMEPAGE = https://github.com/seaweedfs/seaweedfs
 LICENSE = Apache-2.0
-CHANGELOG = "Data stays out of DSM shared folders: the install wizard no longer creates a shared folder, a fresh install runs its server from /volumeN/@seaweedfs on the lowest-numbered volume, and new servers default to /volumeN/@seaweedfs. Volume servers: one per DSM volume, chosen in the install/upgrade wizard, each with its own ports and memory budget; the package memory limit is their sum. Lab qualification candidate: pinned SeaweedFS 4.48 reliability branch, large-volume offsets, and supervised volume daemon. Not approved for deployment until exact-artifact DSM lifecycle qualification passes."
+CHANGELOG = "Memory follows the installed RAM: the package limit is the installed memory less DSM's share, and servers without a fixed budget share it by the volumes each holds (auto in the wizard). Data stays out of DSM shared folders: the install wizard no longer creates a shared folder, a fresh install runs its server from /volumeN/@seaweedfs on the lowest-numbered volume, and new servers default to /volumeN/@seaweedfs. Volume servers: one per DSM volume, chosen in the install/upgrade wizard, each with its own ports and memory budget. Lab qualification candidate: pinned SeaweedFS 4.48 reliability branch, large-volume offsets, and supervised volume daemon. Not approved for deployment until exact-artifact DSM lifecycle qualification passes."
 
 WIZARDS_DIR = src/wizard
 

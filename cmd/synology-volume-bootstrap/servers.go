@@ -26,24 +26,33 @@ type serverConfig struct {
 	Max         int    `yaml:"max,omitempty"`
 	DiskType    string `yaml:"diskType,omitempty"`
 	// MemoryMB is the server's Go soft limit (GOMEMLIMIT); the core derives
-	// its upload/download admission from it.
+	// its upload/download admission from it. Unset, the server takes a share
+	// of the installed memory by the volumes it holds (serverBudgetsMB).
 	MemoryMB int `yaml:"memoryMB,omitempty"`
 }
 
 const (
-	maxServers = 8
-	// defaultServerMemoryMB covers a server holding several hundred volumes
-	// with a LevelDB index (a 746-volume server measured 1.4 GB resident,
-	// 2.3 GB peak); size larger ones explicitly.
-	defaultServerMemoryMB = 1536
-	minServerMemoryMB     = 256
-	// pageCacheMBPerServer is the filesystem cache each server may keep
-	// charged to the package cgroup beyond its Go heap (cgroup v1 counts
-	// page cache against the limit; without headroom every read evicts).
-	pageCacheMBPerServer = 1024
+	maxServers        = 8
+	minServerMemoryMB = 256
+	// DSM keeps 2 GiB of the installed memory, or a quarter of a larger
+	// machine; the package cgroup limit is the rest.
+	hostReserveMinMB   = 2048
+	hostReserveDivisor = 4
+	// pageCacheReserveMB of the package limit stays outside the Go budgets:
+	// cgroup v1 charges page cache to the package, and without headroom every
+	// read evicts.
+	pageCacheReserveMB = 1024
+	// An automatic budget is weighted by what the server holds: a LevelDB
+	// index costs about 2 MB per volume (a 746-volume server measured 1.4 GB
+	// resident, 2.3 GB peak) over a small base.
+	serverBaseMB = 256
+	volumeMB     = 2
 	// legacySharedMemoryMB is the Go budget volume.instances divides.
 	legacySharedMemoryMB = 3072
 )
+
+// meminfoPath is /proc/meminfo; tests replace it.
+var meminfoPath = "/proc/meminfo"
 
 // perServerFlags are set per server and so cannot be shared extraFlags.
 var perServerFlags = map[string]bool{"dir": true, "port": true, "port.grpc": true, "metricsPort": true, "max": true, "publicUrl": true, "disk": true}
@@ -113,10 +122,7 @@ func validateServers(c *config) error {
 		if s.DiskType == "" {
 			s.DiskType = v.DiskType
 		}
-		if s.MemoryMB == 0 {
-			s.MemoryMB = defaultServerMemoryMB
-		}
-		if s.MemoryMB < minServerMemoryMB {
+		if s.MemoryMB != 0 && s.MemoryMB < minServerMemoryMB {
 			return fmt.Errorf("volume.servers[%d].memoryMB must be at least %d", i, minServerMemoryMB)
 		}
 		if err := claim(s.Port, fmt.Sprintf("server %d port", i)); err != nil {
@@ -134,26 +140,109 @@ func validateServers(c *config) error {
 	return nil
 }
 
-// serverMemoryMB is server i's Go soft limit, or 0 to let the core size a
-// lone process from the cgroup.
-func serverMemoryMB(c *config, i int) int {
-	if len(c.Volume.Servers) > 0 {
-		return c.Volume.Servers[i].MemoryMB
+// hostMemoryMB is the installed memory, MemTotal.
+func hostMemoryMB() (int, error) {
+	raw, err := os.ReadFile(meminfoPath)
+	if err != nil {
+		return 0, err
 	}
-	if c.Volume.Instances > 1 {
-		return legacySharedMemoryMB / c.Volume.Instances
+	for _, line := range strings.Split(string(raw), "\n") {
+		if rest, ok := strings.CutPrefix(line, "MemTotal:"); ok {
+			f := strings.Fields(rest)
+			if len(f) == 2 && f[1] == "kB" {
+				kb, err := strconv.Atoi(f[0])
+				if err == nil && kb > 0 {
+					return kb / 1024, nil
+				}
+			}
+			return 0, fmt.Errorf("%s: unreadable MemTotal %q", meminfoPath, line)
+		}
 	}
-	return 0
+	return 0, fmt.Errorf("%s has no MemTotal", meminfoPath)
 }
 
-// packageMemoryLimitMB is the package cgroup limit volume.servers needs, or 0
-// to keep the unit's own limit.
-func packageMemoryLimitMB(c *config) int {
-	total := 0
-	for _, s := range c.Volume.Servers {
-		total += s.MemoryMB + pageCacheMBPerServer
+// packageMemoryLimitMB is the package cgroup limit volume.servers runs in,
+// the installed memory less DSM's share, or 0 to keep the unit's own limit.
+// Explicit budgets that cannot fit in it are refused.
+func packageMemoryLimitMB(c *config) (int, error) {
+	if len(c.Volume.Servers) == 0 {
+		return 0, nil
 	}
-	return total
+	host, err := hostMemoryMB()
+	if err != nil {
+		return 0, err
+	}
+	limit := host - max(hostReserveMinMB, host/hostReserveDivisor)
+	explicit, auto := 0, 0
+	for _, s := range c.Volume.Servers {
+		if s.MemoryMB == 0 {
+			auto++
+		}
+		explicit += s.MemoryMB
+	}
+	if need := explicit + auto*minServerMemoryMB + pageCacheReserveMB; need > limit {
+		return 0, fmt.Errorf("memory budgets of %d MiB plus %d MiB page cache exceed the package's %d MiB of %d MiB installed",
+			explicit+auto*minServerMemoryMB, pageCacheReserveMB, limit, host)
+	}
+	return limit, nil
+}
+
+// volumesHeld counts the volumes in a server's directory, normal and erasure
+// coded; a missing directory holds none.
+func volumesHeld(dir string) int {
+	entries, _ := os.ReadDir(dir)
+	n := 0
+	for _, e := range entries {
+		if ext := filepath.Ext(e.Name()); !e.IsDir() && (ext == ".dat" || ext == ".ecx") {
+			n++
+		}
+	}
+	return n
+}
+
+// serverBudgetsMB is each server's Go soft limit, or nil to let the core size
+// a lone process from the cgroup. Explicit memoryMB values are kept; the other
+// servers share the package limit less the page cache reserve and the explicit
+// budgets, weighted by the volumes each holds when the package starts.
+func serverBudgetsMB(c *config) ([]int, error) {
+	if len(c.Volume.Servers) == 0 {
+		if c.Volume.Instances > 1 {
+			budgets := make([]int, c.Volume.Instances)
+			for i := range budgets {
+				budgets[i] = legacySharedMemoryMB / c.Volume.Instances
+			}
+			return budgets, nil
+		}
+		return nil, nil
+	}
+	limit, err := packageMemoryLimitMB(c)
+	if err != nil {
+		return nil, err
+	}
+	share := limit - pageCacheReserveMB
+	weights := make([]int, len(c.Volume.Servers))
+	total := 0
+	for i, s := range c.Volume.Servers {
+		if s.MemoryMB != 0 {
+			share -= s.MemoryMB
+			continue
+		}
+		weights[i] = serverBaseMB + volumeMB*volumesHeld(s.Dir)
+		total += weights[i]
+	}
+	budgets := make([]int, len(c.Volume.Servers))
+	for i, s := range c.Volume.Servers {
+		if s.MemoryMB != 0 {
+			budgets[i] = s.MemoryMB
+			continue
+		}
+		budgets[i] = int(int64(share) * int64(weights[i]) / int64(total))
+		if budgets[i] < minServerMemoryMB {
+			return nil, fmt.Errorf("volume.servers[%d] (%s) would get %d MiB, below the %d MiB minimum; lower the explicit budgets",
+				i, s.Dir, budgets[i], minServerMemoryMB)
+		}
+	}
+	return budgets, nil
 }
 
 // writeServerMemoryLimits writes run/gomemlimit[.i] beside the argv files;
@@ -167,11 +256,11 @@ func writeServerMemoryLimits(c *config, argvPath string) error {
 			return err
 		}
 	}
-	for i := 0; i < serverCount(c); i++ {
-		mb := serverMemoryMB(c, i)
-		if mb == 0 {
-			continue
-		}
+	budgets, err := serverBudgetsMB(c)
+	if err != nil {
+		return err
+	}
+	for i, mb := range budgets {
 		name := "gomemlimit"
 		if i > 0 {
 			name = fmt.Sprintf("gomemlimit.%d", i)
@@ -184,7 +273,8 @@ func writeServerMemoryLimits(c *config, argvPath string) error {
 }
 
 // setServers rewrites volume.yaml's server list from the wizard's selection,
-// "dir[=memoryMB],...", in order. Servers that stay keep their ports; new
+// "dir[=memoryMB|auto],...", in order; a server without a value keeps its
+// budget and "auto" returns it to automatic sizing. Servers that stay keep their ports; new
 // servers take ports above every port used before or after, so no new server
 // takes a removed server's identity. A legacy single volume.dir becomes the
 // first entry with its ports, and a -metricsPort extra flag becomes
@@ -203,11 +293,15 @@ func setServers(file, spec string) error {
 		dir, mem, hasMem := strings.Cut(item, "=")
 		w := want{dir: path.Clean(strings.TrimSpace(dir))}
 		if hasMem {
-			n, err := strconv.Atoi(strings.TrimSpace(mem))
-			if err != nil {
-				return fmt.Errorf("memory for %s: %w", dir, err)
+			if mem = strings.TrimSpace(mem); mem == "auto" {
+				w.mem = -1
+			} else {
+				n, err := strconv.Atoi(mem)
+				if err != nil {
+					return fmt.Errorf("memory for %s: %w", dir, err)
+				}
+				w.mem = n
 			}
-			w.mem = n
 		}
 		wants = append(wants, w)
 	}
@@ -291,7 +385,10 @@ func setServers(file, spec string) error {
 				s.MetricsPort = maxMetrics
 			}
 		}
-		if w.mem != 0 {
+		switch {
+		case w.mem < 0:
+			s.MemoryMB = 0
+		case w.mem > 0:
 			s.MemoryMB = w.mem
 		}
 		servers = append(servers, *s)

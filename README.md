@@ -251,14 +251,25 @@ Run `register-service.sh` as an administrator afterwards, as after every
 install or upgrade: it creates new server directories (only under a mounted
 `/volumeN`) for the package user and applies the memory limit below.
 
-**Memory.** Each server's `memoryMB` (default 1536) is its Go soft limit
-(`GOMEMLIMIT`); the core derives its upload and download admission from it.
-Memory grows with the volumes a server holds: about 2 MB each with a LevelDB
-index (a server with 746 volumes measured 1.4 GB resident, 2.3 GB peak). The
-package cgroup is shared, and cgroup v1 also charges page cache to it, so
-`register-service.sh` sets the unit's `MemoryLimit` to the sum of the budgets
-plus 1024 MiB of page cache per server (a drop-in beside the unit); a single
-legacy `volume.dir` server keeps the unit's own 5 G limit.
+**Memory.** The package's limit follows the installed memory: MemTotal less
+DSM's share (2 GiB, or a quarter of a machine with more than 8 GiB), so an
+8 GB NAS gets 5.7 GiB and a 16 GB one 12 GiB. `register-service.sh` writes it
+as the unit's `MemoryLimit` (a drop-in beside the unit); a single legacy
+`volume.dir` server keeps the unit's own 5 G limit. 1024 MiB of it stays
+outside the Go budgets, because cgroup v1 charges page cache to the package.
+
+A server's `memoryMB` fixes its Go soft limit (`GOMEMLIMIT`); the core
+derives its upload and download admission from it. Without `memoryMB` the
+server is sized automatically at each package start: the servers without one
+share the rest of the limit by the volumes each holds, weighted 256 MiB plus
+2 MiB per volume (a LevelDB index costs about 2 MB per volume; a server with
+746 volumes measured 1.4 GB resident, 2.3 GB peak). On the 8 GB NAS with 742,
+25, 4 and 5 volumes that is 3271, 575, 496 and 500 MiB. The shares move as
+volumes are created, at the next start. Budgets that cannot fit the installed
+memory (fixed budgets plus 256 MiB per automatic server plus the page cache
+reserve) are refused by `--print-memory-limit-mb`, so registration fails
+rather than set a limit above the machine; after a memory change, run
+`register-service.sh` again. In the wizard, `auto` selects automatic sizing.
 
 `volume.instances` (several servers in one directory) still divides a
 conservative 3072 MiB Go budget among its processes (1536 MiB each for two),
