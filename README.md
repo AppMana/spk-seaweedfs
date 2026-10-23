@@ -231,7 +231,9 @@ pre-filled from the current configuration. A new server's directory defaults to
 `@` directories as shared folders, whereas a plain top-level directory can be
 restored as a share at mount and renamed on a name collision (`seaweed` to
 `seaweed_1`), which leaves its server without its data. Leaving every box
-unchecked keeps the current servers. Unchecking a server stops it; its directory and data stay.
+unchecked keeps the current servers; a fresh install then runs one server from
+`@seaweedfs` on the lowest-numbered volume. The package creates no DSM shared
+folder. Unchecking a server stops it; its directory and data stay.
 Run `register-service.sh` as an administrator afterwards, as after every
 install or upgrade: it creates new server directories (only under a mounted
 `/volumeN`) for the package user and applies the memory limit below.

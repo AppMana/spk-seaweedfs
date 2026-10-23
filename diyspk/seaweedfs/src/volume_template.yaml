@@ -26,7 +26,10 @@ kube:
   # masterPort: 9333
 
 volume:
-  dir: @SHARE_PATH@
+  # The installer picks the lowest-numbered DSM volume. The @ prefix keeps
+  # DSM from managing the directory as a shared folder; register-service.sh
+  # creates it for the package user.
+  dir: @DATA_DIR@
   ip: @ADVERTISE_IP@
   publicUrl: @ADVERTISE_IP@:@HTTP_PORT@
   port: @HTTP_PORT@
@@ -47,13 +50,13 @@ volume:
   # Alternatively, one server per DSM volume (the wizard's "Volume
   # servers" step writes this and removes dir/instances):
   # servers:
-  #   - dir: /volume1/seaweedfs
+  #   - dir: /volume1/@seaweedfs
   #     port: 8080          # ports are a server's identity; never renumber
   #     grpcPort: 18080
   #     metricsPort: 9325   # optional; also volume.metricsPort, +i per server
   #     max: 2000           # default volume.max
   #     memoryMB: 3072      # Go budget (GOMEMLIMIT); default 1536
-  #   - dir: /volume2/seaweedfs
+  #   - dir: /volume2/@seaweedfs
 
 mtls:
   secretName: @MTLS_SECRET@

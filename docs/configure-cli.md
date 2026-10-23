@@ -29,8 +29,9 @@ kube:
   seaweedName: seaweedfs
 
 volume:
-  # On-disk directory `weed volume` writes data files into.
-  dir: /volume1/seaweedfs
+  # On-disk directory `weed volume` writes data files into. The @ prefix
+  # keeps DSM from managing it as a shared folder.
+  dir: /volume1/@seaweedfs
   # Address advertised to masters. Must be reachable from every other
   # SeaweedFS node (master, filer, S3 gateway, peer volume).
   ip: 192.0.2.10

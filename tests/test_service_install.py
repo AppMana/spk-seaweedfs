@@ -45,6 +45,13 @@ class ServiceInstall(unittest.TestCase):
             # before invoking service_postinst on DSM7.
             (var / 'volume_template.yaml').write_bytes(
                 (root / 'diyspk/seaweedfs/src/volume_template.yaml').read_bytes())
+            # The lowest-numbered DSM volume gets the default server, in an
+            # @ directory that DSM never manages as a shared folder.
+            mounts = work / 'mounts'
+            mounts.write_text('/dev/md0 / ext4 rw 0 0\n'
+                              '/dev/mapper/cachedev_1 /volume10 ext4 rw 0 0\n'
+                              '/dev/mapper/cachedev_0 /volume2 btrfs rw 0 0\n'
+                              '/dev/mapper/cachedev_0 /volume2/@docker btrfs rw 0 0\n')
             result = subprocess.run(['sh', '-ec', '''
 . "$HOOK"
 service_postinst
@@ -54,14 +61,24 @@ service_postinst
            'SC_USER': pwd.getpwuid(os.getuid()).pw_name, 'wizard_token': 'lab-only-token',
            'wizard_apiserver': 'https://192.0.2.10:6443', 'wizard_namespace': 'seaweedfs',
            'wizard_seaweed_name': 'qualification', 'wizard_advertise_ip': '192.0.2.20',
-           'wizard_rack': 'synology', 'wizard_max_volumes': '8', 'SHARE_PATH': '/volume1/seaweed'},
+           'wizard_rack': 'synology', 'wizard_max_volumes': '8',
+           'SEAWEEDFS_MOUNTS': str(mounts)},
                 capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             config = (var / 'volume.yaml').read_text()
             self.assertIn('https://192.0.2.10:6443', config)
             self.assertNotIn('@PKGVAR@', config)
+            self.assertIn('\n  dir: /volume2/@seaweedfs\n', config)
+            self.assertNotIn('@SHARE_PATH@', config)
             self.assertEqual((var / 'kube/token').read_text(), 'lab-only-token')
             self.assertEqual((var / 'kube/token').stat().st_mode & 0o777, 0o600)
             self.assertEqual((var / 'volume.yaml').stat().st_mode & 0o777, 0o600)
             for name in ('volume.yaml', 'kube/token', 'log', 'log/weed.log'):
                 self.assertEqual((var / name).stat().st_uid, os.getuid(), name)
+
+    def test_package_requests_no_dsm_shared_folder(self):
+        root = Path(__file__).resolve().parents[1]
+        makefile = (root / 'diyspk/seaweedfs/Makefile').read_text()
+        self.assertNotIn('SERVICE_WIZARD_SHARENAME', makefile)
+        steps = (root / 'diyspk/seaweedfs/src/wizard/install-steps.json').read_text()
+        self.assertNotIn('wizard_data_share', steps)

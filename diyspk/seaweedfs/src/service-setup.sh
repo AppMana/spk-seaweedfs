@@ -105,6 +105,14 @@ service_postinst() {
         if [ "${wizard_insecure}" = "true" ]; then
             INSECURE="true"
         fi
+        # The default server lives in an @ directory on the lowest-numbered
+        # DSM volume; the wizard's "Volume servers" step can replace it.
+        DATA_VOLUME=$(awk '$2 ~ /^\/volume[0-9]+$/ { sub(/^\/volume/, "", $2); print $2 }' "${SEAWEEDFS_MOUNTS:-/proc/mounts}" | sort -n | head -n 1)
+        if [ -z "${DATA_VOLUME}" ]; then
+            echo "no mounted DSM volume for the volume server's data" >&2
+            return 1
+        fi
+        DATA_DIR="/volume${DATA_VOLUME}/@seaweedfs"
         WEED_PLAIN_HTTP="false"
         if [ "${wizard_weed_plain_http}" = "true" ]; then
             WEED_PLAIN_HTTP="true"
@@ -116,7 +124,7 @@ service_postinst() {
             -e "s|@INSECURE@|${INSECURE}|g" \
             -e "s|@NAMESPACE@|${wizard_namespace}|g" \
             -e "s|@SEAWEED_NAME@|${wizard_seaweed_name}|g" \
-            -e "s|@SHARE_PATH@|${SHARE_PATH}|g" \
+            -e "s|@DATA_DIR@|${DATA_DIR}|g" \
             -e "s|@ADVERTISE_IP@|${ADVERTISE_IP}|g" \
             -e "s|@HTTP_PORT@|8080|g" \
             -e "s|@GRPC_PORT@|18080|g" \
