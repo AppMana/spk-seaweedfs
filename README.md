@@ -74,7 +74,20 @@ so the already-tested bytes are reused; rerunning the build requires fresh
 qualification. This temporary promotion gate does not itself execute DSM tests.
 Never set the variable merely because source tests or package inspection pass.
 
-The current package definition is **4.48-6**: SeaweedFS
+The current package definition is **4.48-7**: the 4.48-6 `weed` with packaging
+that keeps volume data out of DSM shared folders. The install wizard no longer
+asks for a shared folder and the package declares no `data-share` resource, so
+DSM creates none; a fresh install runs its server from `/volumeN/@seaweedfs` on
+the lowest-numbered volume, and new servers default to `@seaweedfs` too. The CI
+artifact with SHA-256
+`03dd363b7111ac92de8f3f538f2d4e6ebad93474fa03322edc7ab504030e7c88` (`weed`
+`1cc2ff36cd5f6a9030f0e54b5b5aaa2bbffd59943d53e53944993d720ea8a6e4`) passed
+`make test-dsm-complete` (384 s, including the fresh-install checks that DSM's
+shared folders are unchanged and the data directory is a package-owned `@`
+directory) and `make test-dsm-volume-servers` (367 s) as a package-only upgrade
+(`DSM_PACKAGE_ONLY_UPGRADE=1`) from the deployed 4.48-6.
+
+4.48-6: SeaweedFS
 `6a570503378e408c57c74f36efda148c5950595c`, the build every component of the
 AppMana cluster runs, with the 4.48-5 packaging and go-fuse pin. Over 27afab3bb it
 changes only the filer, mount and shell; the volume server code is identical.
