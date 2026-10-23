@@ -29,7 +29,8 @@ func TestLiveDSMVolumeServers(t *testing.T) {
 const dsmServerAMemoryMB = 1024
 
 // dsmPackageLimit sets $limit (bytes) to the package limit for the guest's
-// installed memory: MemTotal less DSM's 2 GiB, or a quarter when larger.
+// installed memory: MemTotal less DSM's 2 GiB, or a quarter when larger. The
+// lab VM has 4 GB, so the page cache reserve is a quarter of the limit.
 const dsmPackageLimit = `host=$(( $(awk '$1 == "MemTotal:" {print $2}' /proc/meminfo) / 1024 ))
 reserve=$(( host / 4 ))
 [ "$reserve" -ge 2048 ] || reserve=2048
@@ -85,7 +86,9 @@ done
 `+dsmPackageLimit+`auto=$(cat /var/packages/seaweedfs/var/run/gomemlimit.1)
 auto=${auto%MiB}
 test "$auto" -ge 256
-test $(( (`+itoa(dsmServerAMemoryMB)+` + auto + 1024) * 1048576 )) -le "$limit"
+cache=$(( limit / 1048576 / 4 ))
+[ "$cache" -le 1024 ] || cache=1024
+test $(( (`+itoa(dsmServerAMemoryMB)+` + auto + cache) * 1048576 )) -le "$limit"
 echo "DSM_VOLUME_SERVERS_AUTO_BUDGET=${auto}MiB limit=$limit"
 for pid in $pids; do
   cg=$(awk -F: '$2 == "memory" {print $3}' /proc/$pid/cgroup)

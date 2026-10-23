@@ -38,9 +38,9 @@ const (
 	// machine; the package cgroup limit is the rest.
 	hostReserveMinMB   = 2048
 	hostReserveDivisor = 4
-	// pageCacheReserveMB of the package limit stays outside the Go budgets:
-	// cgroup v1 charges page cache to the package, and without headroom every
-	// read evicts.
+	// pageCacheReserveMB of the package limit, or a quarter of a smaller
+	// limit, stays outside the Go budgets: cgroup v1 charges page cache to the
+	// package, and without headroom every read evicts.
 	pageCacheReserveMB = 1024
 	// An automatic budget is weighted by what the server holds: a LevelDB
 	// index costs about 2 MB per volume (a 746-volume server measured 1.4 GB
@@ -180,11 +180,16 @@ func packageMemoryLimitMB(c *config) (int, error) {
 		}
 		explicit += s.MemoryMB
 	}
-	if need := explicit + auto*minServerMemoryMB + pageCacheReserveMB; need > limit {
+	if need := explicit + auto*minServerMemoryMB + pageCacheMB(limit); need > limit {
 		return 0, fmt.Errorf("memory budgets of %d MiB plus %d MiB page cache exceed the package's %d MiB of %d MiB installed",
-			explicit+auto*minServerMemoryMB, pageCacheReserveMB, limit, host)
+			explicit+auto*minServerMemoryMB, pageCacheMB(limit), limit, host)
 	}
 	return limit, nil
+}
+
+// pageCacheMB is the part of a package limit kept for page cache.
+func pageCacheMB(limit int) int {
+	return min(pageCacheReserveMB, limit/4)
 }
 
 // volumesHeld counts the volumes in a server's directory, normal and erasure
@@ -219,7 +224,7 @@ func serverBudgetsMB(c *config) ([]int, error) {
 	if err != nil {
 		return nil, err
 	}
-	share := limit - pageCacheReserveMB
+	share := limit - pageCacheMB(limit)
 	weights := make([]int, len(c.Volume.Servers))
 	total := 0
 	for i, s := range c.Volume.Servers {

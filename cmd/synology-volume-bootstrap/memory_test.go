@@ -87,6 +87,26 @@ func TestMemory_AutomaticBudgetsFollowVolumesHeld(t *testing.T) {
 	}
 }
 
+// On a small machine the page cache reserve is a quarter of the package
+// limit, so a 4 GB DSM still runs a fixed 1024 MiB server beside an
+// automatic one.
+func TestMemory_SmallMachinesReserveAQuarterForPageCache(t *testing.T) {
+	withHostMemory(t, 3918)
+	c := autoServers(withVolumes(t, 7), withVolumes(t, 0))
+	c.Volume.Servers[0].MemoryMB = 1024
+	if err := validateLayout(c); err != nil {
+		t.Fatal(err)
+	}
+	got, err := serverBudgetsMB(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// limit 3918-2048 = 1870, reserve 1870/4 = 467: 1870-467-1024 = 379
+	if fmt.Sprint(got) != "[1024 379]" {
+		t.Fatalf("budgets %v, want [1024 379]", got)
+	}
+}
+
 // An explicit memoryMB is kept; automatic servers share what remains.
 func TestMemory_ExplicitBudgetsAreKeptAndAutomaticOnesShareTheRest(t *testing.T) {
 	withHostMemory(t, 7915)
