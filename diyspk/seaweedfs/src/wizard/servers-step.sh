@@ -62,7 +62,7 @@ servers_step() {
 {
   "step_title": "Volume servers",
   "items": [
-    {"desc": "Each checked DSM volume runs its own SeaweedFS volume server from the directory below, so its disk is a separate data node in the same rack. A server that stays keeps its ports and data; a new one takes unused ports. Unchecking a server stops it without deleting its directory. Leave every box unchecked to keep the current servers (on a fresh install, one server in the shared folder above)."},
+    {"desc": "Each checked DSM volume runs its own SeaweedFS volume server from the directory below, so its disk is a separate data node in the same rack. A server that stays keeps its ports and data; a new one takes unused ports. Unchecking a server stops it without deleting its directory. Leave every box unchecked to keep the current servers (on a fresh install, one server in @seaweedfs on the lowest-numbered volume)."},
     {"desc": "Memory is the server's Go budget; its upload and download limits follow from it. The package's memory limit becomes the sum of the budgets plus 1024 MiB of page cache per server. About 2 MB per volume held is typical (746 volumes measured 1.4 GB, peaking at 2.3 GB). After the wizard, run register-service.sh as an administrator to create new directories and apply the memory limit."},
     {"type": "multiselect", "subitems": [$checks
     ]},

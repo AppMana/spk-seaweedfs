@@ -37,6 +37,7 @@ state=$(readlink -f "$pkg/var")
 case "$state" in /volume[0-9]*/@appdata/seaweedfs) ;; *) exit 1;; esac
 backup="$state.before-fresh-`+lab.ID()+`"
 test ! -e "$backup"
+shares_before=$(/usr/syno/sbin/synoshare --enum ALL | sed '1,2d' | sort)
 /usr/syno/bin/synopkg uninstall seaweedfs
 test ! -f "$pkg/INFO"
 test ! -e "$pkg/target"
@@ -61,7 +62,23 @@ for file in "$state/volume.yaml" "$state/kube/token"; do
   test "$(stat -c %u "$file")" = "$uid"
 done
 test -d "$backup"
+# The default server is an @ directory on the lowest-numbered volume, which
+# DSM never manages as a shared folder; the package creates no share.
+first=$(awk '$2 ~ /^\/volume[0-9]+$/ { sub(/^\/volume/, "", $2); print $2 }' /proc/mounts | sort -n | head -n 1)
+data=/volume$first/@seaweedfs
+grep -qx "  dir: $data" "$state/volume.yaml"
+shares_after=$(/usr/syno/sbin/synoshare --enum ALL | sed '1,2d' | sort)
+if [ "$shares_after" != "$shares_before" ]; then
+  echo "fresh install changed DSM shared folders: before [$shares_before] after [$shares_after]" >&2
+  exit 1
+fi
 sh "$pkg/target/bin/register-service.sh"
+test -d "$data"
+test ! -L "$data"
+test "$(stat -c %u "$data")" = "$uid"
+/usr/syno/sbin/synoshare --enum ALL | sed '1,2d' | while read -r share; do
+  /usr/syno/sbin/synoshare --get "$share" | grep -q "Path \.*\[$data\]" && { echo "$data is a shared folder" >&2; exit 1; }
+done
 echo DSM_PACKAGE_FRESH_INSTALL_PASS
 `)
 }

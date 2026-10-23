@@ -85,18 +85,6 @@
             "type": "textfield",
             "subitems": [
                {
-                  "key": "wizard_data_share",
-                  "desc": "Shared folder for volume data (created if missing)",
-                  "defaultValue": "seaweedfs",
-                  "validator": {
-                     "allowBlank": false,
-                     "regex": {
-                        "expr": "/^[^<>: */?\"]*/",
-                        "errorText": "Share name must be a single folder name."
-                     }
-                  }
-               },
-               {
                   "key": "wizard_advertise_ip",
                   "desc": "IP advertised to masters (LAN address of this Synology)",
                   "defaultValue": "",

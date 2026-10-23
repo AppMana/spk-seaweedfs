@@ -58,7 +58,7 @@ kube:
   namespace: seaweedfs
   seaweedName: seaweedfs
 volume:
-  dir: /volume1/seaweedfs
+  dir: /volume1/@seaweedfs
   ip: 192.0.2.10
   publicUrl: 192.0.2.10:8080
   port: 8080
@@ -76,10 +76,7 @@ sudo chown sc-seaweedfs:sc-seaweedfs $PKGVAR/volume.yaml
 sudo chmod 0600 $PKGVAR/volume.yaml
 ```
 
-Note: `volume.dir` is the **on-disk path** to the data directory. If you used the wizard, the package's `shares/seaweedfs` symlink points at the chosen shared folder; over SSH you can either:
-
-- Point `volume.dir` directly at `/volume1/<sharename>/seaweedfs` (most common); or
-- Pre-create the package's symlink: `sudo ln -s /volume1/seaweedfs $PKGVAR/shares/seaweedfs` and set `volume.dir: /var/packages/seaweedfs/var/shares/seaweedfs`.
+Note: `volume.dir` is the **on-disk path** to the data directory. Keep it an `@` directory at a volume's top level (`/volumeN/@seaweedfs`): DSM never registers `@` directories as shared folders, whereas it can restore a plain top-level directory as a share at mount and rename it on a name collision. `register-service.sh` creates a missing directory for the package user.
 
 ## 4. Start
 

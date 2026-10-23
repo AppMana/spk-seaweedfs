@@ -62,7 +62,7 @@ curl -F "file=@/tmp/hello.txt" "http://<filer>:8888/test/hello.txt"
 Confirm it landed on the Synology:
 
 ```bash
-ssh admin@nas ls -la /volume1/seaweedfs/
+ssh admin@nas ls -la /volume1/@seaweedfs/
 # expect *.dat / *.idx files
 ```
 
