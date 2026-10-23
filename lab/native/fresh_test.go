@@ -77,7 +77,10 @@ test -d "$data"
 test ! -L "$data"
 test "$(stat -c %u "$data")" = "$uid"
 /usr/syno/sbin/synoshare --enum ALL | sed '1,2d' | while read -r share; do
-  /usr/syno/sbin/synoshare --get "$share" | grep -q "Path \.*\[$data\]" && { echo "$data is a shared folder" >&2; exit 1; }
+  if /usr/syno/sbin/synoshare --get "$share" | grep -q "Path \.*\[$data\]"; then
+    echo "$data is a shared folder" >&2
+    exit 1
+  fi
 done
 echo DSM_PACKAGE_FRESH_INSTALL_PASS
 `)
