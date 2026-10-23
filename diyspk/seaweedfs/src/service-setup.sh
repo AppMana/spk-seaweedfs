@@ -36,10 +36,10 @@ done
 
 # The wizard's "Volume servers" step (wizard/servers-step.sh) asks, for each
 # DSM volume, whether to run a server there, from which directory and with
-# what memory budget. Checked rows become volume.servers, in volume order;
-# servers that stay keep their ports. Nothing checked keeps volume.yaml as is.
-# register-service.sh (administrator) then creates new directories and
-# applies the summed memory limit.
+# what memory budget (auto, or MiB). Checked rows become volume.servers, in
+# volume order; servers that stay keep their ports. Nothing checked keeps
+# volume.yaml as is. register-service.sh (administrator) then creates new
+# directories and applies the memory limit derived from the installed memory.
 apply_wizard_servers() {
     spec=
     for n in $(env | sed -n 's/^wizard_server_volume\([0-9][0-9]*\)=true$/\1/p' | sort -n); do
@@ -51,7 +51,8 @@ apply_wizard_servers() {
             *) echo "volume server directory $dir is not on /volume$n" >&2; return 1 ;;
         esac
         case "$mb" in
-            ''|*[!0-9]*) echo "memory for $dir must be a whole number of MiB" >&2; return 1 ;;
+            ''|auto) mb=auto ;;
+            *[!0-9]*) echo "memory for $dir must be auto or a whole number of MiB" >&2; return 1 ;;
         esac
         spec="$spec${spec:+,}$dir=$mb"
     done

@@ -14,7 +14,9 @@ import (
 // The candidate's "Volume servers" configuration on a real DSM: the upgraded
 // single server becomes two servers through the same --set-servers call the
 // wizard's apply step makes, the administrator registration creates the new
-// directory and sets the summed memory limit, and both servers join the real
+// directory and sets the memory limit from the VM's installed memory (the
+// first server with a fixed budget, the second sized automatically), and both
+// servers join the real
 // cluster as separate data nodes of one rack. Original data is read back
 // across the change, a restart and an abrupt VM crash.
 func TestLiveDSMVolumeServers(t *testing.T) {
@@ -24,12 +26,15 @@ func TestLiveDSMVolumeServers(t *testing.T) {
 	runDSMKubernetesJoin(t, dsmUpgradeFromEnv(t), qualifyDSMVolumeServers(t))
 }
 
-const (
-	dsmServerAMemoryMB = 1024
-	dsmServerBMemoryMB = 768
-	// each server's budget plus the package's 1024 MiB page cache per server
-	dsmServersMemoryLimit = (dsmServerAMemoryMB + dsmServerBMemoryMB + 2*1024) << 20
-)
+const dsmServerAMemoryMB = 1024
+
+// dsmPackageLimit sets $limit (bytes) to the package limit for the guest's
+// installed memory: MemTotal less DSM's 2 GiB, or a quarter when larger.
+const dsmPackageLimit = `host=$(( $(awk '$1 == "MemTotal:" {print $2}' /proc/meminfo) / 1024 ))
+reserve=$(( host / 4 ))
+[ "$reserve" -ge 2048 ] || reserve=2048
+limit=$(( (host - reserve) * 1048576 ))
+`
 
 func qualifyDSMVolumeServers(t *testing.T) dsmJoinedTransition {
 	return func(ctx context.Context, lab *client.Session, cluster func(args ...string) []byte) {
@@ -42,14 +47,14 @@ test -n "$first"
 second="${first}-b"
 test ! -e "$second"
 /usr/syno/bin/synopkg stop seaweedfs
-"$pkg/target/bin/synology-volume-bootstrap" --config "$pkg/var/volume.yaml" --set-servers "$first=`+itoa(dsmServerAMemoryMB)+`,$second=`+itoa(dsmServerBMemoryMB)+`"
+"$pkg/target/bin/synology-volume-bootstrap" --config "$pkg/var/volume.yaml" --set-servers "$first=`+itoa(dsmServerAMemoryMB)+`,$second=auto"
 "$pkg/target/bin/synology-volume-bootstrap" --config "$pkg/var/volume.yaml" --print-servers
 sh "$pkg/target/bin/register-service.sh"
 for d in "$first" "$second"; do
   test -d "$d"
   test "$(stat -c %U "$d")" = sc-seaweedfs
 done
-test "$(systemctl show pkg-seaweedfs-volume.service -p MemoryLimit)" = "MemoryLimit=`+itoa(dsmServersMemoryLimit)+`"
+`+dsmPackageLimit+`test "$(systemctl show pkg-seaweedfs-volume.service -p MemoryLimit)" = "MemoryLimit=$limit"
 /usr/syno/bin/synopkg start seaweedfs
 echo DSM_VOLUME_SERVERS_CONFIGURED
 `)
@@ -58,8 +63,10 @@ echo DSM_VOLUME_SERVERS_CONFIGURED
 }
 
 // Two package processes with distinct directories and ports, each with its own
-// Go budget, in one cgroup with the summed limit, both answering and both
-// registered as data nodes of the lab rack; the first kept its port.
+// Go budget (the second's the bootstrap's automatic share, within the limit
+// less page cache), in one cgroup with the installed-memory limit, both
+// answering and both registered as data nodes of the lab rack; the first kept
+// its port.
 func assertDSMVolumeServers(t *testing.T, ctx context.Context, lab *client.Session, cluster func(args ...string) []byte) {
 	t.Helper()
 	out := dsmRoot(t, ctx, lab, `set -eu
@@ -75,10 +82,15 @@ while :; do
   n=$((n+1)); test "$n" -lt 60
   sleep 2
 done
+`+dsmPackageLimit+`auto=$(cat /var/packages/seaweedfs/var/run/gomemlimit.1)
+auto=${auto%MiB}
+test "$auto" -ge 256
+test $(( (`+itoa(dsmServerAMemoryMB)+` + auto + 1024) * 1048576 )) -le "$limit"
+echo "DSM_VOLUME_SERVERS_AUTO_BUDGET=${auto}MiB limit=$limit"
 for pid in $pids; do
   cg=$(awk -F: '$2 == "memory" {print $3}' /proc/$pid/cgroup)
   test "$cg" = /seaweedfs.slice/pkg-seaweedfs-volume.service
-  test "$(cat /sys/fs/cgroup/memory$cg/memory.limit_in_bytes)" = `+itoa(dsmServersMemoryLimit)+`
+  test "$(cat /sys/fs/cgroup/memory$cg/memory.limit_in_bytes)" = "$limit"
   args=$(tr '\000' ' ' < /proc/$pid/cmdline)
   mem=$(tr '\000' '\n' < /proc/$pid/environ | sed -n 's/^GOMEMLIMIT=//p')
   dir=$(printf '%s\n' $args | sed -n 's/^-dir=//p')
@@ -109,11 +121,17 @@ echo DSM_VOLUME_SERVERS_ANSWER
 		}
 		byPort[f["port"]] = server{f["dir"], f["port"], f["grpc"], f["gomemlimit"]}
 	}
+	auto := ""
+	for _, line := range strings.Split(out, "\n") {
+		if v, ok := strings.CutPrefix(line, "DSM_VOLUME_SERVERS_AUTO_BUDGET="); ok {
+			auto, _, _ = strings.Cut(v, " ")
+		}
+	}
 	first, second := byPort["8080"], byPort["8081"]
 	if first.grpc != "18080" || first.memory != itoa(dsmServerAMemoryMB)+"MiB" {
 		t.Fatalf("the first server must keep its ports and take its own budget: %+v", byPort)
 	}
-	if second.grpc != "18081" || second.memory != itoa(dsmServerBMemoryMB)+"MiB" || second.dir != first.dir+"-b" {
+	if second.grpc != "18081" || auto == "" || second.memory != auto || second.dir != first.dir+"-b" {
 		t.Fatalf("the second server must run from its own directory and ports with its own budget: %+v", byPort)
 	}
 	var status struct {
@@ -141,7 +159,7 @@ echo DSM_VOLUME_SERVERS_ANSWER
 			}
 		}
 		if nodes["192.0.2.20:8080"] == "lab/synology" && nodes["192.0.2.20:8081"] == "lab/synology" {
-			t.Log("DSM_VOLUME_SERVERS_PASS: two data nodes in rack lab/synology, separate directories, ports and budgets, summed package memory limit")
+			t.Log("DSM_VOLUME_SERVERS_PASS: two data nodes in rack lab/synology, separate directories, ports and budgets (fixed and automatic), installed-memory package limit")
 			return
 		}
 		select {

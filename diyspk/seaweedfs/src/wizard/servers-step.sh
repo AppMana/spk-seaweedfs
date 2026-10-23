@@ -14,13 +14,14 @@ servers_step() {
     mounts=${SEAWEEDFS_WIZARD_MOUNTS:-/proc/mounts}
     tab=$(printf '\t')
 
-    # dir<TAB>port<TAB>grpcPort<TAB>metricsPort<TAB>memoryMB per server. A
-    # package older than volume.servers has no --print-servers; its one
-    # server is volume.dir.
+    # dir<TAB>port<TAB>grpcPort<TAB>metricsPort<TAB>budgetMB<TAB>configuredMB
+    # per server (configured 0: automatic; packages before 4.48-8 print no
+    # sixth column and always set a budget). A package older than
+    # volume.servers has no --print-servers; its one server is volume.dir.
     current=$("$bootstrap" --config "$config" --print-servers 2>/dev/null) || current=
     if [ -z "$current" ] && [ -r "$config" ]; then
         legacy=$(sed -n 's/^  dir:[[:space:]]*//p' "$config" | head -n 1)
-        [ -z "$legacy" ] || current="${legacy}${tab}8080${tab}18080${tab}0${tab}0"
+        [ -z "$legacy" ] || current="${legacy}${tab}8080${tab}18080${tab}0${tab}0${tab}0"
     fi
     # New servers get an @-prefixed directory: DSM never registers those as
     # shared folders, while a plain top-level directory can be restored as a
@@ -38,13 +39,14 @@ servers_step() {
         if [ -n "$row" ]; then
             dir=$(printf '%s' "$row" | cut -f1)
             port=$(printf '%s' "$row" | cut -f2)
-            mb=$(printf '%s' "$row" | cut -f5)
-            [ "$mb" != 0 ] || mb=3072
+            mb=$(printf '%s\t' "$row" | cut -f6)
+            [ -n "$mb" ] || mb=$(printf '%s' "$row" | cut -f5)
+            [ "$mb" != 0 ] || mb=auto
             checked=true
             label="$volume: current server, port $port${free:+, $free}"
         else
             dir="$volume/$name"
-            mb=1536
+            mb=auto
             checked=false
             label="$volume: new server${free:+, $free}"
         fi
@@ -55,7 +57,7 @@ servers_step() {
  \"validator\": {\"allowBlank\": false, \"regex\": {\"expr\": \"/^\\\\/volume$n\\\\/[^\\\\/.][^\\\"]*$/\", \"errorText\": \"A directory on $volume.\"}}}"
         memory="$memory${memory:+,}
 {\"key\": \"wizard_server_volume${n}_memory_mb\", \"desc\": \"Memory for the $volume server (MiB)\", \"defaultValue\": \"$mb\",
- \"validator\": {\"allowBlank\": false, \"regex\": {\"expr\": \"/^[0-9]{3,6}$/\", \"errorText\": \"Whole MiB, at least 256.\"}}}"
+ \"validator\": {\"allowBlank\": false, \"regex\": {\"expr\": \"/^(auto|[0-9]{3,6})$/\", \"errorText\": \"auto, or whole MiB of at least 256.\"}}}"
     done
 
     cat <<EOF
@@ -63,7 +65,7 @@ servers_step() {
   "step_title": "Volume servers",
   "items": [
     {"desc": "Each checked DSM volume runs its own SeaweedFS volume server from the directory below, so its disk is a separate data node in the same rack. A server that stays keeps its ports and data; a new one takes unused ports. Unchecking a server stops it without deleting its directory. Leave every box unchecked to keep the current servers (on a fresh install, one server in @seaweedfs on the lowest-numbered volume)."},
-    {"desc": "Memory is the server's Go budget; its upload and download limits follow from it. The package's memory limit becomes the sum of the budgets plus 1024 MiB of page cache per server. About 2 MB per volume held is typical (746 volumes measured 1.4 GB, peaking at 2.3 GB). After the wizard, run register-service.sh as an administrator to create new directories and apply the memory limit."},
+    {"desc": "Memory is the server's Go budget; its upload and download limits follow from it. The package's memory limit is the installed memory less DSM's share (2 GiB, or a quarter of a larger machine), of which 1024 MiB stays for page cache. auto shares the rest among the automatic servers by the volumes each holds when the package starts (256 MiB plus 2 MiB per volume; 746 volumes measured 1.4 GB, peaking at 2.3 GB). A number in MiB fixes a server's budget. After the wizard, run register-service.sh as an administrator to create new directories and apply the memory limit."},
     {"type": "multiselect", "subitems": [$checks
     ]},
     {"type": "textfield", "subitems": [$dirs

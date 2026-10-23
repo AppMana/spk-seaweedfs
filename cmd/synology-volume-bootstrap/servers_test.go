@@ -34,8 +34,13 @@ func serversBase() *config {
 }
 
 func TestServers_EachServerRunsFromItsOwnDirPortsAndMemory(t *testing.T) {
+	withHostMemory(t, 8192)
 	c := serversBase()
 	if err := validate(c); err != nil {
+		t.Fatal(err)
+	}
+	budgets, err := serverBudgetsMB(c)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if got := serverCount(c); got != 3 {
@@ -48,8 +53,9 @@ func TestServers_EachServerRunsFromItsOwnDirPortsAndMemory(t *testing.T) {
 	}
 	for i, w := range []want{
 		{"/volume1/seaweed", 8080, 18080, 9325, 2000, 3072},
-		{"/volume2/seaweed", 8081, 18081, 9326, 400, defaultServerMemoryMB},
-		{"/volume3/seaweed", 8090, 18090, 9390, 2000, defaultServerMemoryMB},
+		// 8192-2048 DSM-1024 cache-3072 = 2048 MiB for two empty servers
+		{"/volume2/seaweed", 8081, 18081, 9326, 400, 1024},
+		{"/volume3/seaweed", 8090, 18090, 9390, 2000, 1024},
 	} {
 		s := instanceConfig(c, i)
 		v := s.Volume
@@ -59,7 +65,7 @@ func TestServers_EachServerRunsFromItsOwnDirPortsAndMemory(t *testing.T) {
 		if v.PublicURL != "192.0.2.10:"+itoa(w.port) {
 			t.Errorf("server %d publicUrl %q", i, v.PublicURL)
 		}
-		if got := serverMemoryMB(c, i); got != w.memoryMB {
+		if got := budgets[i]; got != w.memoryMB {
 			t.Errorf("server %d memory %d, want %d", i, got, w.memoryMB)
 		}
 		args := strings.Join(renderArgs(s, "m:9333", nil), " ")
@@ -100,32 +106,29 @@ func TestServers_RejectAmbiguousLayouts(t *testing.T) {
 	}
 }
 
-// The package cgroup holds every server's Go heap plus the page cache it
-// charges; the limit is their sum, not a constant shared by any count.
-func TestServers_PackageMemoryLimitIsTheSumOfServerBudgets(t *testing.T) {
-	c := serversBase()
-	if err := validate(c); err != nil {
-		t.Fatal(err)
-	}
-	want := 3072 + 2*defaultServerMemoryMB + 3*pageCacheMBPerServer
-	if got := packageMemoryLimitMB(c); got != want {
-		t.Fatalf("packageMemoryLimitMB = %d, want %d", got, want)
-	}
+// A single legacy server keeps the unit's own limit and sizes itself from the
+// cgroup; volume.instances divides a fixed budget.
+func TestServers_LegacyLayoutsKeepTheUnitLimit(t *testing.T) {
 	legacy := serversBase()
 	legacy.Volume.Servers = nil
 	legacy.Volume.Dir = "/volume1/seaweed"
 	if err := validate(legacy); err != nil {
 		t.Fatal(err)
 	}
-	if got := packageMemoryLimitMB(legacy); got != 0 {
-		t.Fatalf("a single legacy server keeps the unit's own limit, got %d", got)
+	if got, err := packageMemoryLimitMB(legacy); err != nil || got != 0 {
+		t.Fatalf("a single legacy server keeps the unit's own limit, got %d %v", got, err)
 	}
-	if got := serverMemoryMB(legacy, 0); got != 0 {
-		t.Fatalf("a single legacy server sizes itself from the cgroup, got %d", got)
+	if got, err := serverBudgetsMB(legacy); err != nil || got != nil {
+		t.Fatalf("a single legacy server sizes itself from the cgroup, got %v %v", got, err)
+	}
+	legacy.Volume.Instances = 2
+	if got, err := serverBudgetsMB(legacy); err != nil || fmt.Sprint(got) != "[1536 1536]" {
+		t.Fatalf("volume.instances divides %d MiB, got %v %v", legacySharedMemoryMB, got, err)
 	}
 }
 
 func TestBootstrap_WritesOneGoMemoryLimitPerServer(t *testing.T) {
+	withHostMemory(t, 8192)
 	c := serversBase()
 	if err := validate(c); err != nil {
 		t.Fatal(err)
@@ -134,7 +137,7 @@ func TestBootstrap_WritesOneGoMemoryLimitPerServer(t *testing.T) {
 	if err := writeServerMemoryLimits(c, filepath.Join(run, "argv")); err != nil {
 		t.Fatal(err)
 	}
-	for file, want := range map[string]string{"gomemlimit": "3072MiB\n", "gomemlimit.1": "1536MiB\n", "gomemlimit.2": "1536MiB\n"} {
+	for file, want := range map[string]string{"gomemlimit": "3072MiB\n", "gomemlimit.1": "1024MiB\n", "gomemlimit.2": "1024MiB\n"} {
 		got, err := os.ReadFile(filepath.Join(run, file))
 		if err != nil || string(got) != want {
 			t.Errorf("%s = %q %v, want %q", file, got, err, want)
@@ -255,13 +258,14 @@ func TestSetServers_AdoptsLegacySingleServer(t *testing.T) {
 // A CLI install has no cluster connection yet; the service scripts and the
 // wizard still read where its servers run.
 func TestValidateLayout_NeedsNoClusterConfiguration(t *testing.T) {
+	withHostMemory(t, 8192)
 	c := &config{}
 	c.Volume.Servers = []serverConfig{{Dir: "/volume1/seaweed"}, {Dir: "/volume2/seaweed"}}
 	if err := validateLayout(c); err != nil {
 		t.Fatalf("layout without a cluster connection: %v", err)
 	}
-	if got := packageMemoryLimitMB(c); got != 2*(defaultServerMemoryMB+pageCacheMBPerServer) {
-		t.Fatalf("packageMemoryLimitMB = %d", got)
+	if got, err := packageMemoryLimitMB(c); err != nil || got != 8192-2048 {
+		t.Fatalf("packageMemoryLimitMB = %d %v", got, err)
 	}
 	if err := validate(c); err == nil {
 		t.Fatal("starting a server still requires the cluster connection")

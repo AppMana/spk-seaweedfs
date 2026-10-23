@@ -74,11 +74,11 @@ class Wizard(unittest.TestCase):
         self.assertEqual(steps[0]['step_title'], 'Upgrade')
         self.assertEqual(self.fields(steps), {
             'wizard_server_volume1': True, 'wizard_server_volume1_dir': '/volume1/seaweed',
-            'wizard_server_volume1_memory_mb': '3072',
+            'wizard_server_volume1_memory_mb': 'auto',
             'wizard_server_volume2': False, 'wizard_server_volume2_dir': '/volume2/@seaweedfs',
-            'wizard_server_volume2_memory_mb': '1536',
+            'wizard_server_volume2_memory_mb': 'auto',
             'wizard_server_volume10': False, 'wizard_server_volume10_dir': '/volume10/@seaweedfs',
-            'wizard_server_volume10_memory_mb': '1536'})
+            'wizard_server_volume10_memory_mb': 'auto'})
 
     def test_new_servers_reuse_an_existing_at_prefixed_name(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -135,8 +135,8 @@ class Wizard(unittest.TestCase):
                 'wizard_server_volume2_memory_mb': '1536',
                 'wizard_server_volume10': 'false', 'wizard_server_volume10_dir': '/volume10/seaweed'})
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(self.servers(config), ['/volume1/seaweed\t8080\t18080\t9325\t3072',
-                                                    '/volume2/seaweed\t8081\t18081\t9326\t1536'])
+            self.assertEqual(self.servers(config), ['/volume1/seaweed\t8080\t18080\t9325\t3072\t3072',
+                                                    '/volume2/seaweed\t8081\t18081\t9326\t1536\t1536'])
 
     def test_nothing_checked_leaves_the_configuration_alone(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -154,10 +154,31 @@ class Wizard(unittest.TestCase):
             config.write_text('kube:\n  apiserver: ""\n  tokenFile: /t\n  namespace: seaweedfs\n'
                               'volume:\n  dir: /volume1/seaweedfs\n  ip: ""\n  port: 8080\n  grpcPort: 18080\n  instances: 1\n')
             for query, want in (('--print-server-count', '1\n'), ('--print-memory-limit-mb', '0\n'),
-                                ('--print-servers', '/volume1/seaweedfs\t8080\t18080\t0\t0\n')):
+                                ('--print-servers', '/volume1/seaweedfs\t8080\t18080\t0\t0\t0\n')):
                 result = subprocess.run([str(self.bootstrap), '--config', str(config), query],
                                         text=True, capture_output=True)
                 self.assertEqual((result.returncode, result.stdout), (0, want), (query, result.stderr))
+
+    def test_auto_sizes_a_server_from_the_installed_memory(self):
+        # An automatic server is offered as auto again on the next upgrade,
+        # while a fixed budget is offered as its number.
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / 'volume.yaml'
+            config.write_text(LEGACY)
+            result = self.apply(config, {
+                'wizard_server_volume1': 'true', 'wizard_server_volume1_dir': '/volume1/seaweed',
+                'wizard_server_volume1_memory_mb': 'auto',
+                'wizard_server_volume2': 'true', 'wizard_server_volume2_dir': '/volume2/seaweed',
+                'wizard_server_volume2_memory_mb': '1536'})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn('memoryMB: 0', config.read_text())
+            first, second = (line.split('\t') for line in self.servers(config))
+            self.assertEqual(first[5], '0')
+            self.assertGreaterEqual(int(first[4]), 256)
+            self.assertEqual(second[4:], ['1536', '1536'])
+            fields = self.fields(self.wizard('upgrade', config, self.bootstrap))
+        self.assertEqual(fields['wizard_server_volume1_memory_mb'], 'auto')
+        self.assertEqual(fields['wizard_server_volume2_memory_mb'], '1536')
 
     def test_a_directory_off_its_volume_is_refused(self):
         with tempfile.TemporaryDirectory() as directory:
