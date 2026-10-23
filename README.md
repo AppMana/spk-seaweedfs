@@ -164,8 +164,9 @@ install or upgrade: it creates new server directories (only under a mounted
 DSM's share (2 GiB, or a quarter of a machine with more than 8 GiB), so an
 8 GB NAS gets 5.7 GiB and a 16 GB one 12 GiB. `register-service.sh` writes it
 as the unit's `MemoryLimit` (a drop-in beside the unit); a single legacy
-`volume.dir` server keeps the unit's own 5 G limit. 1024 MiB of it stays
-outside the Go budgets, because cgroup v1 charges page cache to the package.
+`volume.dir` server keeps the unit's own 5 G limit. 1024 MiB of it (a quarter
+of a limit under 4 GiB) stays outside the Go budgets, because cgroup v1
+charges page cache to the package.
 
 A server's `memoryMB` fixes its Go soft limit (`GOMEMLIMIT`); the core
 derives its upload and download admission from it. Without `memoryMB` the
