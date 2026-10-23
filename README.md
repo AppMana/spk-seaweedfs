@@ -211,11 +211,11 @@ volume:
   rack: nas
   metricsPort: 9325        # first server's default; +i for the others
   servers:
-    - dir: /volume1/seaweedfs
+    - dir: /volume1/@seaweedfs
       port: 8080
       grpcPort: 18080
       memoryMB: 3072
-    - dir: /volume2/seaweedfs   # port 8081, grpcPort 18081, metricsPort 9326
+    - dir: /volume2/@seaweedfs  # port 8081, grpcPort 18081, metricsPort 9326
 ```
 
 It replaces `volume.dir` and `volume.instances`. Per-server flags (`-dir`,
@@ -226,8 +226,12 @@ before, so it never takes over a removed server's identity.
 
 The install and upgrade wizards' **Volume servers** step lists every mounted
 DSM volume with a checkbox, the server's directory and its memory budget,
-pre-filled from the current configuration. Leaving every box unchecked keeps the
-current servers. Unchecking a server stops it; its directory and data stay.
+pre-filled from the current configuration. A new server's directory defaults to
+`/volumeN/@seaweedfs` (or the current servers' `@` name): DSM never registers
+`@` directories as shared folders, whereas a plain top-level directory can be
+restored as a share at mount and renamed on a name collision (`seaweed` to
+`seaweed_1`), which leaves its server without its data. Leaving every box
+unchecked keeps the current servers. Unchecking a server stops it; its directory and data stay.
 Run `register-service.sh` as an administrator afterwards, as after every
 install or upgrade: it creates new server directories (only under a mounted
 `/volumeN`) for the package user and applies the memory limit below.
