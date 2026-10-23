@@ -22,9 +22,13 @@ servers_step() {
         legacy=$(sed -n 's/^  dir:[[:space:]]*//p' "$config" | head -n 1)
         [ -z "$legacy" ] || current="${legacy}${tab}8080${tab}18080${tab}0${tab}0"
     fi
-    name=seaweedfs
+    # New servers get an @-prefixed directory: DSM never registers those as
+    # shared folders, while a plain top-level directory can be restored as a
+    # share at mount and renamed on a name collision (seaweed -> seaweed_1).
+    # An existing @-prefixed name is reused so all servers match.
+    name=@seaweedfs
     first=$(printf '%s\n' "$current" | head -n 1 | cut -f1)
-    [ -z "$first" ] || name=$(basename "$first")
+    case "$(basename "${first:-/x}")" in @?*) name=$(basename "$first") ;; esac
 
     checks= dirs= memory=
     for n in $(awk '$2 ~ /^\/volume[0-9]+$/ { sub(/^\/volume/, "", $2); print $2 }' "$mounts" | sort -n -u); do

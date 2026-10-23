@@ -75,10 +75,18 @@ class Wizard(unittest.TestCase):
         self.assertEqual(self.fields(steps), {
             'wizard_server_volume1': True, 'wizard_server_volume1_dir': '/volume1/seaweed',
             'wizard_server_volume1_memory_mb': '3072',
-            'wizard_server_volume2': False, 'wizard_server_volume2_dir': '/volume2/seaweed',
+            'wizard_server_volume2': False, 'wizard_server_volume2_dir': '/volume2/@seaweedfs',
             'wizard_server_volume2_memory_mb': '1536',
-            'wizard_server_volume10': False, 'wizard_server_volume10_dir': '/volume10/seaweed',
+            'wizard_server_volume10': False, 'wizard_server_volume10_dir': '/volume10/@seaweedfs',
             'wizard_server_volume10_memory_mb': '1536'})
+
+    def test_new_servers_reuse_an_existing_at_prefixed_name(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / 'volume.yaml'
+            config.write_text(LEGACY.replace('/volume1/seaweed', '/volume1/@sw'))
+            fields = self.fields(self.wizard('upgrade', config, '/nonexistent'))
+        self.assertEqual(fields['wizard_server_volume1_dir'], '/volume1/@sw')
+        self.assertEqual(fields['wizard_server_volume2_dir'], '/volume2/@sw')
 
     def test_upgrade_reads_the_current_server_list(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -100,7 +108,7 @@ class Wizard(unittest.TestCase):
                          ['Kubernetes connection', 'Volume server settings', 'Volume servers'])
         fields = self.fields(steps)
         self.assertFalse(any(v for k, v in fields.items() if k.count('_') == 2), fields)
-        self.assertEqual(fields['wizard_server_volume1_dir'], '/volume1/seaweedfs')
+        self.assertEqual(fields['wizard_server_volume1_dir'], '/volume1/@seaweedfs')
 
     def apply(self, config, answers):
         with tempfile.TemporaryDirectory() as directory:
