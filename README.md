@@ -79,7 +79,12 @@ transfer admission shared equally among the automatically sized servers rather
 than by the volumes they hold (see Resource limits). Under 4.48-8 the NAS's new
 `/volume4` server, holding 8 volumes, got a 509 MiB Go limit and 93 MiB of
 upload admission; replicate POSTs waited up to 25 s for it and the primaries'
-5 s no-progress deadline failed writes. Not yet qualified.
+5 s no-progress deadline failed writes. The CI artifact with SHA-256
+`ca591824a13916c63097bb92fa255be35442ee7061ecf9ccf2cbb7a4f235cdba` (`weed`
+unchanged) passed `make test-dsm-complete` (404 s) and
+`make test-dsm-volume-servers` (379 s) as a package-only upgrade from the
+deployed 4.48-8, and runs on the NAS since 2026-10-26 with 423 MiB upload and
+141 MiB download admission on each of its four servers.
 
 4.48-8: the 4.48-7 package with memory
 sized from the installed RAM (see Resource limits): the package limit is the
