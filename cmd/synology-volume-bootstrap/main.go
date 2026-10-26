@@ -187,7 +187,7 @@ func main() {
 			v := instanceConfig(cfg, i).Volume
 			budget, configured := 0, 0
 			if budgets != nil {
-				budget = budgets[i]
+				budget = budgets[i].GoMB
 			}
 			if i < len(cfg.Volume.Servers) {
 				configured = cfg.Volume.Servers[i].MemoryMB
@@ -228,6 +228,18 @@ func main() {
 		fatal("mtls material: %v", err)
 	}
 
+	budgets, err := serverBudgetsMB(cfg)
+	if err != nil {
+		fatal("memory: %v", err)
+	}
+	serverArgs := func(i int) []string {
+		args := renderArgs(instanceConfig(cfg, i), masters, tlsArgs)
+		if budgets != nil {
+			args = append(args, admissionArgs(cfg, budgets[i])...)
+		}
+		return args
+	}
+
 	if *printOnly {
 		if weedBin != "" {
 			fmt.Fprintf(os.Stderr, "weed binary: %s\n", weedBin)
@@ -236,7 +248,7 @@ func main() {
 			if serverCount(cfg) > 1 {
 				fmt.Printf("# instance %d\n", i)
 			}
-			for _, a := range renderArgs(instanceConfig(cfg, i), masters, tlsArgs) {
+			for _, a := range serverArgs(i) {
 				fmt.Println(a)
 			}
 		}
@@ -271,7 +283,7 @@ func main() {
 		if i > 0 {
 			path = fmt.Sprintf("%s.%d", *outPath, i)
 		}
-		if err := writeArgv(path, renderArgs(icfg, masters, tlsArgs)); err != nil {
+		if err := writeArgv(path, serverArgs(i)); err != nil {
 			fatal("write argv for instance %d: %v", i, err)
 		}
 	}

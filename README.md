@@ -170,12 +170,18 @@ charges page cache to the package.
 
 A server's `memoryMB` fixes its Go soft limit (`GOMEMLIMIT`); the core
 derives its upload and download admission from it. Without `memoryMB` the
-server is sized automatically at each package start: the servers without one
-share the rest of the limit by the volumes each holds, weighted 256 MiB plus
-2 MiB per volume (a LevelDB index costs about 2 MB per volume; a server with
-746 volumes measured 1.4 GB resident, 2.3 GB peak). On the 8 GB NAS with 742,
-25, 4 and 5 volumes that is 3271, 575, 496 and 500 MiB. The shares move as
-volumes are created, at the next start. Budgets that cannot fit the installed
+server is sized automatically at each package start: each server without one
+holds its index, 256 MiB plus 2 MiB per volume it holds (a LevelDB index costs
+about 2 MB per volume; a server with 746 volumes measured 1.4 GB resident,
+2.3 GB peak), and the rest of the limit is shared equally among them for
+transfers, passed as `-concurrentUploadLimitMB` and
+`-concurrentDownloadLimitMB` (3:1) unless `extraFlags` sets them. Transfers are
+not split by volumes held: the master grows new volumes on the emptiest disk,
+so a nearly empty server takes most writes and replicas, and the core's own
+admission, which assumes a 1.25 GiB base heap, leaves a small budget at its
+floor. On the 8 GB NAS with 743, 26, 4 and 8 volumes that is 2306, 872, 828
+and 836 MiB, each with 423 MiB upload and 141 MiB download admission. The
+shares move as volumes are created, at the next start. Budgets that cannot fit the installed
 memory (fixed budgets plus 256 MiB per automatic server plus the page cache
 reserve) are refused by `--print-memory-limit-mb`, so registration fails
 rather than set a limit above the machine; after a memory change, run

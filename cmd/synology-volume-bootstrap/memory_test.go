@@ -65,25 +65,77 @@ func TestMemory_PackageLimitFollowsInstalledMemory(t *testing.T) {
 	}
 }
 
-// Servers without memoryMB share the package limit, less the page cache
-// reserve, by the volumes each holds: 256 MiB plus 2 MiB per volume.
+// goMB is each server's Go soft limit.
+func goMB(budgets []serverMemory) []int {
+	out := make([]int, len(budgets))
+	for i, b := range budgets {
+		out[i] = b.GoMB
+	}
+	return out
+}
+
+// Servers without memoryMB hold their indexes, 256 MiB plus 2 MiB per volume,
+// and share what remains of the package limit (less the page cache reserve)
+// equally for transfers.
 func TestMemory_AutomaticBudgetsFollowVolumesHeld(t *testing.T) {
 	withHostMemory(t, 7915)
 	c := autoServers(withVolumes(t, 742), withVolumes(t, 25), withVolumes(t, 4), withVolumes(t, 5))
 	if err := validateLayout(c); err != nil {
 		t.Fatal(err)
 	}
-	// Go total 7915-2048-1024 = 4843 MiB; weights 1740, 306, 264, 266 of 2576
-	want := []int{4843 * 1740 / 2576, 4843 * 306 / 2576, 4843 * 264 / 2576, 4843 * 266 / 2576}
+	// Go total 7915-2048-1024 = 4843 MiB; indexes 1740, 306, 264, 266 of 2576; 2267/4 = 566 each for transfers
 	got, err := serverBudgetsMB(c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fmt.Sprint(got) != fmt.Sprint(want) {
-		t.Fatalf("budgets %v, want %v", got, want)
+	if fmt.Sprint(goMB(got)) != "[2306 872 830 832]" {
+		t.Fatalf("budgets %v, want [2306 872 830 832]", goMB(got))
 	}
-	if fmt.Sprint(want) != "[3271 575 496 500]" {
-		t.Fatalf("worked example changed: %v", want)
+}
+
+// Upload admission is not split by the volumes a server holds: the master
+// grows new volumes on the emptiest disk, so a nearly empty server takes most
+// writes and replicas. 4.48-8 gave the NAS's new /volume4 server (8 volumes) a
+// 509 MiB Go limit, from which the core's admission, assuming a 1.25 GiB base
+// heap, fell to its floor of 93 MiB; replicate POSTs waited up to 25 s for it
+// and the primaries' 5 s no-progress deadline failed a trainer's checkpoint
+// (2026-10-26). Each automatic server is given its transfer share as explicit
+// admission, upload:download 3:1 as the core splits it.
+func TestMemory_TransferAdmissionIsSharedEquallyNotByVolumesHeld(t *testing.T) {
+	withHostMemory(t, 7915)
+	c := autoServers(withVolumes(t, 743), withVolumes(t, 26), withVolumes(t, 4), withVolumes(t, 8))
+	if err := validateLayout(c); err != nil {
+		t.Fatal(err)
+	}
+	got, err := serverBudgetsMB(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// indexes 1742, 308, 264, 272 of 4843: 2257/4 = 564 each, 423 upload and 141 download
+	for i, b := range got {
+		if b.UploadMB != 423 || b.DownloadMB != 141 {
+			t.Errorf("server %d admission %d/%d MiB, want 423/141", i, b.UploadMB, b.DownloadMB)
+		}
+	}
+	if fmt.Sprint(goMB(got)) != "[2306 872 828 836]" {
+		t.Fatalf("budgets %v, want [2306 872 828 836]", goMB(got))
+	}
+	args := admissionArgs(c, got[3])
+	if fmt.Sprint(args) != "[-concurrentUploadLimitMB=423 -concurrentDownloadLimitMB=141]" {
+		t.Fatalf("admission args %v", args)
+	}
+}
+
+// An operator's admission flag in extraFlags wins; a server with an explicit
+// memoryMB keeps the core's own derivation.
+func TestMemory_ExplicitAdmissionIsKept(t *testing.T) {
+	c := autoServers("/volume1/a")
+	c.Volume.ExtraFlags = []string{"-concurrentUploadLimitMB=2048"}
+	if got := admissionArgs(c, serverMemory{GoMB: 1000, UploadMB: 300, DownloadMB: 100}); fmt.Sprint(got) != "[-concurrentDownloadLimitMB=100]" {
+		t.Fatalf("admission args %v", got)
+	}
+	if got := admissionArgs(autoServers("/volume1/a"), serverMemory{GoMB: 1024}); len(got) != 0 {
+		t.Fatalf("an explicit memoryMB leaves admission to the core, got %v", got)
 	}
 }
 
@@ -102,8 +154,8 @@ func TestMemory_SmallMachinesReserveAQuarterForPageCache(t *testing.T) {
 		t.Fatal(err)
 	}
 	// limit 3918-2048 = 1870, reserve 1870/4 = 467: 1870-467-1024 = 379
-	if fmt.Sprint(got) != "[1024 379]" {
-		t.Fatalf("budgets %v, want [1024 379]", got)
+	if fmt.Sprint(goMB(got)) != "[1024 379]" {
+		t.Fatalf("budgets %v, want [1024 379]", goMB(got))
 	}
 }
 
@@ -120,8 +172,8 @@ func TestMemory_ExplicitBudgetsAreKeptAndAutomaticOnesShareTheRest(t *testing.T)
 		t.Fatal(err)
 	}
 	rest := 4843 - 1024
-	if want := fmt.Sprint([]int{1024, rest / 2, rest / 2}); fmt.Sprint(got) != want {
-		t.Fatalf("budgets %v, want %s", got, want)
+	if want := fmt.Sprint([]int{1024, rest / 2, rest / 2}); fmt.Sprint(goMB(got)) != want {
+		t.Fatalf("budgets %v, want %s", goMB(got), want)
 	}
 }
 
