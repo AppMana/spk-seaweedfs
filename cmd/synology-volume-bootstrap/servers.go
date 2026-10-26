@@ -205,16 +205,29 @@ func volumesHeld(dir string) int {
 	return n
 }
 
-// serverBudgetsMB is each server's Go soft limit, or nil to let the core size
-// a lone process from the cgroup. Explicit memoryMB values are kept; the other
-// servers share the package limit less the page cache reserve and the explicit
-// budgets, weighted by the volumes each holds when the package starts.
-func serverBudgetsMB(c *config) ([]int, error) {
+// serverMemory is a server's Go soft limit and, for an automatic budget, its
+// transfer admission (0: the core derives admission from the Go limit).
+type serverMemory struct {
+	GoMB       int
+	UploadMB   int
+	DownloadMB int
+}
+
+// serverBudgetsMB is each server's memory, or nil to let the core size a lone
+// process from the cgroup. Explicit memoryMB values are kept. The other
+// servers each hold their index, weighted by the volumes they hold when the
+// package starts, and share the rest of the package limit (less the page cache
+// reserve and the explicit budgets) equally for transfers: writes follow the
+// master's volume placement, which favours the emptiest disk, not the volumes
+// a server already holds. The core's own admission assumes a 1.25 GiB base
+// heap, so an automatic server's share is passed to it explicitly, split
+// upload:download 3:1 as the core splits it.
+func serverBudgetsMB(c *config) ([]serverMemory, error) {
 	if len(c.Volume.Servers) == 0 {
 		if c.Volume.Instances > 1 {
-			budgets := make([]int, c.Volume.Instances)
+			budgets := make([]serverMemory, c.Volume.Instances)
 			for i := range budgets {
-				budgets[i] = legacySharedMemoryMB / c.Volume.Instances
+				budgets[i] = serverMemory{GoMB: legacySharedMemoryMB / c.Volume.Instances}
 			}
 			return budgets, nil
 		}
@@ -224,30 +237,58 @@ func serverBudgetsMB(c *config) ([]int, error) {
 	if err != nil {
 		return nil, err
 	}
-	share := limit - pageCacheMB(limit)
-	weights := make([]int, len(c.Volume.Servers))
-	total := 0
+	pool := limit - pageCacheMB(limit)
+	index := make([]int, len(c.Volume.Servers))
+	auto := 0
 	for i, s := range c.Volume.Servers {
 		if s.MemoryMB != 0 {
-			share -= s.MemoryMB
+			pool -= s.MemoryMB
 			continue
 		}
-		weights[i] = serverBaseMB + volumeMB*volumesHeld(s.Dir)
-		total += weights[i]
+		index[i] = serverBaseMB + volumeMB*volumesHeld(s.Dir)
+		pool -= index[i]
+		auto++
 	}
-	budgets := make([]int, len(c.Volume.Servers))
+	budgets := make([]serverMemory, len(c.Volume.Servers))
 	for i, s := range c.Volume.Servers {
 		if s.MemoryMB != 0 {
-			budgets[i] = s.MemoryMB
+			budgets[i] = serverMemory{GoMB: s.MemoryMB}
 			continue
 		}
-		budgets[i] = int(int64(share) * int64(weights[i]) / int64(total))
-		if budgets[i] < minServerMemoryMB {
-			return nil, fmt.Errorf("volume.servers[%d] (%s) would get %d MiB, below the %d MiB minimum; lower the explicit budgets",
-				i, s.Dir, budgets[i], minServerMemoryMB)
+		transfer := pool / auto
+		if transfer <= 0 || index[i]+transfer < minServerMemoryMB {
+			return nil, fmt.Errorf("volume.servers[%d] (%s) would get %d MiB for its index and %d MiB for transfers, below the %d MiB minimum; lower the explicit budgets",
+				i, s.Dir, index[i], transfer, minServerMemoryMB)
 		}
+		upload := transfer * 3 / 4
+		budgets[i] = serverMemory{GoMB: index[i] + transfer, UploadMB: upload, DownloadMB: transfer - upload}
 	}
 	return budgets, nil
+}
+
+// admissionArgs are the transfer admission flags of a server's budget; a flag
+// the operator set in volume.extraFlags is kept instead.
+func admissionArgs(c *config, m serverMemory) []string {
+	var args []string
+	for _, f := range []struct {
+		name string
+		mb   int
+	}{{"concurrentUploadLimitMB", m.UploadMB}, {"concurrentDownloadLimitMB", m.DownloadMB}} {
+		if f.mb <= 0 || hasFlag(c.Volume.ExtraFlags, f.name) {
+			continue
+		}
+		args = append(args, fmt.Sprintf("-%s=%d", f.name, f.mb))
+	}
+	return args
+}
+
+func hasFlag(flags []string, name string) bool {
+	for _, f := range flags {
+		if n, _, _ := strings.Cut(strings.TrimLeft(f, "-"), "="); n == name {
+			return true
+		}
+	}
+	return false
 }
 
 // writeServerMemoryLimits writes run/gomemlimit[.i] beside the argv files;
@@ -265,12 +306,12 @@ func writeServerMemoryLimits(c *config, argvPath string) error {
 	if err != nil {
 		return err
 	}
-	for i, mb := range budgets {
+	for i, m := range budgets {
 		name := "gomemlimit"
 		if i > 0 {
 			name = fmt.Sprintf("gomemlimit.%d", i)
 		}
-		if err := writeArgv(filepath.Join(dir, name), []string{fmt.Sprintf("%dMiB", mb)}); err != nil {
+		if err := writeArgv(filepath.Join(dir, name), []string{fmt.Sprintf("%dMiB", m.GoMB)}); err != nil {
 			return err
 		}
 	}

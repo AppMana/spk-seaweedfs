@@ -74,7 +74,14 @@ so the already-tested bytes are reused; rerunning the build requires fresh
 qualification. This temporary promotion gate does not itself execute DSM tests.
 Never set the variable merely because source tests or package inspection pass.
 
-The current package definition is **4.48-8**: the 4.48-7 package with memory
+The current package definition is **4.48-9**: the 4.48-8 package with
+transfer admission shared equally among the automatically sized servers rather
+than by the volumes they hold (see Resource limits). Under 4.48-8 the NAS's new
+`/volume4` server, holding 8 volumes, got a 509 MiB Go limit and 93 MiB of
+upload admission; replicate POSTs waited up to 25 s for it and the primaries'
+5 s no-progress deadline failed writes. Not yet qualified.
+
+4.48-8: the 4.48-7 package with memory
 sized from the installed RAM (see Resource limits): the package limit is the
 installed memory less DSM's share, and servers without `memoryMB` share it by
 the volumes each holds; `auto` in the wizard. The CI artifact with SHA-256
@@ -271,12 +278,18 @@ charges page cache to the package.
 
 A server's `memoryMB` fixes its Go soft limit (`GOMEMLIMIT`); the core
 derives its upload and download admission from it. Without `memoryMB` the
-server is sized automatically at each package start: the servers without one
-share the rest of the limit by the volumes each holds, weighted 256 MiB plus
-2 MiB per volume (a LevelDB index costs about 2 MB per volume; a server with
-746 volumes measured 1.4 GB resident, 2.3 GB peak). On the 8 GB NAS with 742,
-25, 4 and 5 volumes that is 3271, 575, 496 and 500 MiB. The shares move as
-volumes are created, at the next start. Budgets that cannot fit the installed
+server is sized automatically at each package start: each server without one
+holds its index, 256 MiB plus 2 MiB per volume it holds (a LevelDB index costs
+about 2 MB per volume; a server with 746 volumes measured 1.4 GB resident,
+2.3 GB peak), and the rest of the limit is shared equally among them for
+transfers, passed as `-concurrentUploadLimitMB` and
+`-concurrentDownloadLimitMB` (3:1) unless `extraFlags` sets them. Transfers are
+not split by volumes held: the master grows new volumes on the emptiest disk,
+so a nearly empty server takes most writes and replicas, and the core's own
+admission, which assumes a 1.25 GiB base heap, leaves a small budget at its
+floor. On the 8 GB NAS with 743, 26, 4 and 8 volumes that is 2306, 872, 828
+and 836 MiB, each with 423 MiB upload and 141 MiB download admission. The
+shares move as volumes are created, at the next start. Budgets that cannot fit the installed
 memory (fixed budgets plus 256 MiB per automatic server plus the page cache
 reserve) are refused by `--print-memory-limit-mb`, so registration fails
 rather than set a limit above the machine; after a memory change, run

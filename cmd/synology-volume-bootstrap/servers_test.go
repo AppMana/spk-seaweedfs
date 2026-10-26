@@ -65,7 +65,7 @@ func TestServers_EachServerRunsFromItsOwnDirPortsAndMemory(t *testing.T) {
 		if v.PublicURL != "192.0.2.10:"+itoa(w.port) {
 			t.Errorf("server %d publicUrl %q", i, v.PublicURL)
 		}
-		if got := budgets[i]; got != w.memoryMB {
+		if got := budgets[i].GoMB; got != w.memoryMB {
 			t.Errorf("server %d memory %d, want %d", i, got, w.memoryMB)
 		}
 		args := strings.Join(renderArgs(s, "m:9333", nil), " ")
@@ -122,7 +122,7 @@ func TestServers_LegacyLayoutsKeepTheUnitLimit(t *testing.T) {
 		t.Fatalf("a single legacy server sizes itself from the cgroup, got %v %v", got, err)
 	}
 	legacy.Volume.Instances = 2
-	if got, err := serverBudgetsMB(legacy); err != nil || fmt.Sprint(got) != "[1536 1536]" {
+	if got, err := serverBudgetsMB(legacy); err != nil || fmt.Sprint(goMB(got)) != "[1536 1536]" {
 		t.Fatalf("volume.instances divides %d MiB, got %v %v", legacySharedMemoryMB, got, err)
 	}
 }
