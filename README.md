@@ -74,8 +74,8 @@ so the already-tested bytes are reused; rerunning the build requires fresh
 qualification. This temporary promotion gate does not itself execute DSM tests.
 Never set the variable merely because source tests or package inspection pass.
 
-The current package definition is the **4.51-1 candidate**: the 4.48-9
-packaging with SeaweedFS `ecede7f04a07a166d1e3b0c2fdd0ea0b6d3909c6`
+The current package definition is the **4.51-2 candidate**: the 4.48-9
+packaging with SeaweedFS `1e38202609dc8fb39a77f1f72519ac7393efa79d`
 (`merge/upstream-4.51`: upstream 4.51, upstream master `3f954e34d` and the
 AppMana fixes) and go-fuse `ee4fb2f73956e336d851e77993fcb3702e38e62c`, which
 that SeaweedFS needs for `MetadataRequestTimeout`. Every `weed volume` flag the
