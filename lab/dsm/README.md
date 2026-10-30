@@ -1,94 +1,84 @@
-# xpenology DSM VM (lab)
+# DSM VM lab
 
-## Labcontainers tools peer
+Two things live here: the inputs for the Labcontainers DSM gates in
+`lab/native` (`make test-dsm-*`), and an older manual lab driven by
+`lab/Makefile`.
 
-Use a tools container for the SSH and HTTP probes, not the outer container of
-a VM image. Build from the repository root and pin the resulting local image:
+## Inputs for the DSM gates
 
-```sh
-docker build -f lab/dsm/Dockerfile.peer -t labcontainers/dsm-peer:qualification lab/dsm
-export DSM_PEER_IMAGE=labcontainers/dsm-peer:qualification
-export DSM_PEER_IMAGE_ID=$(docker image inspect --format '{{.Id}}' "$DSM_PEER_IMAGE")
-```
+The gates boot a private DSM VM and a tools peer on the documentation subnet
+`192.0.2.0/24` with no default route. They need:
 
-The image includes curl, checksums, SSH/sshpass, IP/DNS utilities, jq, tcpdump,
-and timeout. The harness verifies the named image against its explicit Docker
-image ID and checks required tools before guest-readiness polling. Containerlab
-requires the named reference for local-image lookup, not a bare image ID.
-Build-time package downloads do not enable runtime egress: the peer still uses
-`network_mode: none` and only the explicitly declared lab links. DSM and the
-Kubernetes backend remain real VMs; HTTP integrity probes run in the container.
+- `DSM_PRIVATE_DIR`: private copies of an RR loader image and a DSM data disk,
+  made by
+  `lab/dsm/prepare-private.sh RR_SEED DSM_SEED OUTPUT_PARENT`. It copies both
+  seeds (reflinks where possible), checks their hashes, creates a random lab
+  administrator in `account.env`, and installs `private-account-hook.sh` and
+  `private-network.sh` into the copy with `guestfish`, so the account and the
+  static lab address exist only on that disk. It never boots anything. Use a
+  fresh copy for each destructive gate; the seeds stay read-only.
+- `DSM_VM_IMAGE`: the DSM wrapper image. `Dockerfile` adds `launch-dsm.py` to
+  the Labcontainers VM base; it boots the private disks with one declared NIC
+  and no management NIC or published ports. `build-qemu.sh EXISTING_OUTPUT_PARENT IMAGE_TAG`
+  builds the image with a QEMU 10.0.8 that carries `qemu-ncq-fix.patch`: an
+  AHCI NCQ command accepted after a failed non-NCQ command (DSM probes an
+  unsupported SMART log page) replayed the old error and left `PxCI` set. The
+  script proves the AHCI qtest fails with `qemu-ncq-regression.patch` and
+  passes, with the full AHCI suite, after the fix.
+- `DSM_PEER_IMAGE` and `DSM_PEER_IMAGE_ID`: the tools peer that runs the SSH
+  and HTTP probes. Containerlab needs the named tag; the gate checks it
+  against the explicit image ID.
 
-## Historical procedure
+  ```sh
+  docker build -f lab/dsm/Dockerfile.peer -t labcontainers/dsm-peer:lab lab/dsm
+  export DSM_PEER_IMAGE=labcontainers/dsm-peer:lab
+  export DSM_PEER_IMAGE_ID=$(docker image inspect --format '{{.Id}}' "$DSM_PEER_IMAGE")
+  ```
 
-QEMU/KVM VM booting the RR loader on the containernet fabric. Every
-step below is scripted.
+- `LABCONTAINERS_LABD`: the Labcontainers daemon matching the SDK in
+  `lab/native/go.mod`.
 
-## Bring-up
+The upgrade gates also take `DSM_KUBERNETES_INPUTS` and the baseline and
+candidate packages; see [AGENTS.md](../../AGENTS.md).
 
-```bash
-./fetch-rr.sh          # downloads out/rr.img (override RR_URL for mirrors)
-./vm-up.sh             # boots on tap-dsm; VNC 127.0.0.1:5909, serial telnet 127.0.0.1:5809
-```
+## Manual lab (`lab/Makefile`)
 
-## First boot: configure RR, install DSM, inject admin+SSH
-
-RR (root:rr over SSH once it's up — check `../net/run/dnsmasq.leases`
-for its DHCP lease on MAC `52:54:00:12:de:ad`) exposes its whole flow
-over SSH; none of this needs the web configurator or VNC:
-
-```bash
-./configure-rr.sh                              # model DS3622xs+, DSM 7.2.x, build loader
-DSM_USER=swadmin DSM_PASS='...' ./inject-admin.sh   # stage admin+SSH for DSM's first boot
-```
-
-`configure-rr.sh` builds the loader but does not reboot into it —
-`inject-admin.sh` needs the DSM system partition mounted from the RR
-side first (it doesn't exist until DSM installs, so this only works
-*after* a first DSM install has happened once; on a truly fresh disk,
-boot DSM, let the installer run, then reboot back to RR once to inject,
-then boot DSM again — `configure-rr.sh`'s final `boot` step handles the
-first install). Then kick off the actual DSM install:
-
-```bash
-DSM_USER=swadmin DSM_PASS='...' ./install-dsm.sh    # internet install, wipes the data disk, ~10 min incl. reboot
-# wait for the VM to come back up (watch http://<vm-ip>:5000 respond as DSM, not the installer)
-DSM_USER=swadmin DSM_PASS='...' ./inject-admin.sh    # NOW mount succeeds; re-trigger via RR if needed
-```
-
-In practice the simplest reliable order is: `configure-rr.sh` → `install-dsm.sh`
-→ once DSM is up, reboot to RR (`menu.sh` option `z`/Junior or power-cycle
-into the loader) → `inject-admin.sh` → boot DSM again. Login as
-`swadmin` over SSH once that completes.
-
-## Storage: pool, volume, data directory
+A containernet fabric, a kind cluster with seaweedfs-operator, a local
+registry and a DSM VM booted with `vm-up.sh`. It is for exploring by hand:
+`vm-up.sh` reuses existing disks in `out/` and the `tap-dsm` interface, and
+`provision.sh` installs whichever SPK it finds. Its results do not stand in
+for the gates above.
 
 ```bash
-DSM_USER=swadmin DSM_PASS='...' ./create-storage.sh
+make -C lab fabric-up registry-up cluster-up seaweed-fork
+make -C lab vm-up                 # fetches out/rr.img; VNC 127.0.0.1:5909, serial telnet 127.0.0.1:5809
 ```
 
-Creates a single-disk storage pool + btrfs volume on the data disk
-(`sdb` by default) via the same webapi calls DSM's Storage Manager UI
-makes, then `mkdir -p /volume1/seaweed`. Idempotent — skips pool/volume
-creation if `/volume1` already exists.
-
-## Provision + join
+First boot, entirely over SSH to the RR loader (find its DHCP lease for MAC
+`52:54:00:12:de:ad` in `lab/net/run/dnsmasq.leases`):
 
 ```bash
-DSM_USER=swadmin DSM_PASS=... ./provision.sh                        # bundled weed
-DSM_USER=swadmin DSM_PASS=... WEED_IMAGE=172.21.240.10:5000/seaweedfs:fork-large-disk \
-  WEED_PLAIN_HTTP=true ./provision.sh                               # fork leg
-DSM_USER=swadmin DSM_PASS=... WEED_IMAGE=chrislusf/seaweedfs:latest ./provision.sh   # upstream leg
+lab/dsm/configure-rr.sh                               # model DS3622xs+, DSM 7.2, build the loader
+DSM_USER=... DSM_PASS=... lab/dsm/install-dsm.sh      # internet install; wipes the data disk
+# once DSM is up, boot back into RR (menu.sh option z, or power cycle into the loader)
+DSM_USER=... DSM_PASS=... lab/dsm/inject-admin.sh     # stage the admin account and SSH
+# boot DSM again and log in over SSH
+DSM_USER=... DSM_PASS=... lab/dsm/create-storage.sh   # pool, btrfs volume and data directory, idempotent
 ```
 
-`provision.sh` installs the SPK, writes `volume.yaml` + kube token/CA,
-adds the pod-CIDR route via the kind node, and restarts the package.
-Re-run it any time; it is idempotent and re-asserts the route. Verify
-with `weed shell`'s `volume.list` from inside the cluster, or `GET`
-`/dir/status` off any master pod — the synology should show up under
-`dataCenter: lab, rack: synology`.
+`inject-admin.sh` mounts the DSM system partition from RR, which exists only
+after DSM has installed once.
 
-## Teardown
+```bash
+DSM_USER=... DSM_PASS=... make -C lab provision-bundled    # bundled weed
+DSM_USER=... DSM_PASS=... make -C lab provision-fork       # fork image from the lab registry
+DSM_USER=... DSM_PASS=... make -C lab provision-upstream   # upstream image
+make -C lab verify-bundled
+```
 
-`kill $(cat out/qemu.pid)` stops the VM; disks stay in `out/` for the
-next boot. Delete `out/data.qcow2` for a factory-fresh DSM.
+`provision.sh` installs the SPK, writes `volume.yaml` and the token and CA,
+adds the pod CIDR route through the kind node and restarts the package; it is
+idempotent. The NAS appears in `volume.list` under `dataCenter: lab,
+rack: synology`. `kill $(cat lab/dsm/out/qemu.pid)` stops the VM and keeps
+its disks; delete `out/data.qcow2` for a factory-fresh DSM. `make -C lab down`
+tears everything down except the registry and images.
