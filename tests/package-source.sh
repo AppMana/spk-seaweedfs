@@ -5,9 +5,9 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 CROSS_MAKEFILE="$ROOT/cross/seaweedfs/Makefile"
 DIGESTS="$ROOT/cross/seaweedfs/digests"
 
-expected_version=4.48-appmana.lab.3
-expected_commit=6a570503378e408c57c74f36efda148c5950595c
-expected_go_fuse_commit=6ead27e20708423a00718812de796241659ad387
+expected_version=4.51-appmana.lab.1
+expected_commit=ecede7f04a07a166d1e3b0c2fdd0ea0b6d3909c6
+expected_go_fuse_commit=ee4fb2f73956e336d851e77993fcb3702e38e62c
 
 value() {
   sed -n "s/^$1[[:space:]]*=[[:space:]]*//p" "$CROSS_MAKEFILE"

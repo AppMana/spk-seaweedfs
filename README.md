@@ -53,7 +53,7 @@ See [docs/install-cli.md](docs/install-cli.md) for the SSH-based path. The DSM P
 
 ## Package qualification and publication
 
-`make test` requires all 33 reviewed bootstrap tests to pass (no missing tests
+`make test` requires all 41 reviewed bootstrap tests to pass (no missing tests
 or skips), plus supervisor, source, metadata and runner-contract checks. PR CI
 also builds the x64 DSM 7.2 SPK and inspects its INFO version/architecture,
 executable lifecycle hooks, x86-64 payloads and component hashes. Run
@@ -74,6 +74,7 @@ so the already-tested bytes are reused; rerunning the build requires fresh
 qualification. This temporary promotion gate does not itself execute DSM tests.
 Never set the variable merely because source tests or package inspection pass.
 
+4.48-9: the 4.48-8 package with
 The upgrade gate swaps the `weed` binary under existing data by default and
 refuses a candidate with the baseline's `weed`. Packaging-only changes (wizard,
 service scripts, registration) set `DSM_PACKAGE_ONLY_UPGRADE=1`, which instead
