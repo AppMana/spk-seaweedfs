@@ -1,10 +1,10 @@
 # Kubernetes integration
 
-The Synology package needs read access to the `Seaweed` CR (and the master `Service` / `Endpoints`, plus optional mTLS `Secret`) in the namespace where seaweedfs-operator runs the cluster. It does **not** need write access; volume↔master heartbeats use no Kubernetes auth.
+The Synology package needs read access to the `Seaweed` resource (operator path) or the master `Service` and `Endpoints` (`kube.masterService` path), plus the optional mTLS `Secret`, in the cluster's namespace. It needs no write access; volume to master heartbeats use no Kubernetes auth.
 
 ## Apply RBAC
 
-`rbac.yaml` assumes the cluster runs in namespace `seaweedfs` and the `Seaweed` CR is named `appmana`. Edit accordingly, then:
+`rbac.yaml` assumes the cluster runs in namespace `seaweedfs`. Edit it if yours differs, then:
 
 ```bash
 kubectl apply -f kube/rbac.yaml
@@ -53,8 +53,8 @@ KUBE_TOKEN=$(kubectl -n seaweedfs create token synology-volume-server --duration
 APISERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
 
 curl -sk -H "Authorization: Bearer ${KUBE_TOKEN}" \
-  "${APISERVER}/apis/seaweed.seaweedfs.com/v1/namespaces/seaweedfs/seaweeds/appmana" \
+  "${APISERVER}/apis/seaweed.seaweedfs.com/v1/namespaces/seaweedfs/seaweeds/<seaweed-name>" \
   | jq '.spec.master.replicas, (.spec.master.grpcPort // 19333)'
 ```
 
-A successful response confirms the token + RBAC are sufficient before the package starts the volume daemon.
+A successful response confirms the token and RBAC are sufficient before the package starts. For the `kube.masterService` path, read `${APISERVER}/api/v1/namespaces/seaweedfs/endpoints/<master-service>` instead.

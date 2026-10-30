@@ -18,11 +18,12 @@ You should see one flag per line: `-mserver=...`, `-ip=...`, `-publicUrl=...`, `
 
 - `Forbidden`: token RBAC. Check `kube/rbac.yaml` is applied in the right namespace.
 - `connection refused`: API server URL not reachable from the Synology. Test with `curl -k ${apiserver}/healthz`.
-- `Seaweed ... not found`: `seaweedName` or `namespace` mismatch with the operator's CR.
+- `Seaweed ... not found`: `seaweedName` or `namespace` mismatch with the operator's CR, or set `kube.masterService` on a cluster without the operator.
 
 ## 2. Service starts
 
 ```bash
+ssh admin@nas sudo sh /var/packages/seaweedfs/target/bin/register-service.sh
 ssh admin@nas sudo synopkg start seaweedfs
 ssh admin@nas sudo synopkg status seaweedfs   # → "start"
 ssh admin@nas sudo tail -n 50 /var/packages/seaweedfs/var/log/weed.log
