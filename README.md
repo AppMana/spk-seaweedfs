@@ -53,7 +53,7 @@ See [docs/install-cli.md](docs/install-cli.md) for the SSH-based path. The DSM P
 
 ## Package qualification and publication
 
-`make test` requires all 33 reviewed bootstrap tests to pass (no missing tests
+`make test` requires all 41 reviewed bootstrap tests to pass (no missing tests
 or skips), plus supervisor, source, metadata and runner-contract checks. PR CI
 also builds the x64 DSM 7.2 SPK and inspects its INFO version/architecture,
 executable lifecycle hooks, x86-64 payloads and component hashes. Run
@@ -74,7 +74,23 @@ so the already-tested bytes are reused; rerunning the build requires fresh
 qualification. This temporary promotion gate does not itself execute DSM tests.
 Never set the variable merely because source tests or package inspection pass.
 
-The current package definition is **4.48-9**: the 4.48-8 package with
+The current package definition is the **4.51-1 candidate**: the 4.48-9
+packaging with SeaweedFS `ecede7f04a07a166d1e3b0c2fdd0ea0b6d3909c6`
+(`merge/upstream-4.51`: upstream 4.51, upstream master `3f954e34d` and the
+AppMana fixes) and go-fuse `ee4fb2f73956e336d851e77993fcb3702e38e62c`, which
+that SeaweedFS needs for `MetadataRequestTimeout`. Every `weed volume` flag the
+bootstrap renders keeps its 4.48 meaning, and the 5-byte offset layout is
+unchanged. Over 4.48-9 the volume server changes what it does with existing
+data at load: a `.dat` whose tail holds complete needles no `.idx` entry
+covers is re-indexed (`.idx` rows appended) and loads writable, where 4.48
+loaded it read-only; an index row that resolves to a different needle is
+dropped on the next write of its key. Each volume directory also gains a
+`.vid_stamp` file, and each server also listens on localhost at its ports.
+It has not passed the DSM gates; as a `weed` change it needs
+`make test-dsm-complete` and `make test-dsm-volume-servers` as a binary
+upgrade from the deployed 4.48-9.
+
+4.48-9: the 4.48-8 package with
 transfer admission shared equally among the automatically sized servers rather
 than by the volumes they hold (see Resource limits). Under 4.48-8 the NAS's new
 `/volume4` server, holding 8 volumes, got a 509 MiB Go limit and 93 MiB of
