@@ -27,6 +27,14 @@ kube:
   namespace: seaweedfs
   # metadata.name of the Seaweed CR managed by seaweedfs-operator.
   seaweedName: seaweedfs
+  # Without the operator: the master Service whose Endpoints list the
+  # masters. Wins over seaweedName when both are set.
+  # masterService: seaweedfs-master
+  # masterPort: 9333          # master HTTP port for masterService
+  # masterAddressMode: dns    # dns (default): weed resolves the Service name,
+  #                           # so the NAS must resolve cluster DNS;
+  #                           # endpoints: pod IPs captured at package start,
+  #                           # stale once a master pod moves
 
 volume:
   # On-disk directory `weed volume` writes data files into. The @ prefix
@@ -47,13 +55,38 @@ volume:
   # Verbatim flags appended to `weed volume`. Use sparingly; the
   # bootstrap does not validate them.
   extraFlags: []
+  # Several servers sharing dir: server i serves port+i and grpcPort+i
+  # from <dir>/v<i>, max applies per server.
+  instances: 1
+  # Or one server per directory, replacing dir and instances (see the
+  # README's "One server per DSM volume"):
+  # metricsPort: 9325
+  # servers:
+  #   - dir: /volume1/@seaweedfs
+  #     port: 8080
+  #     grpcPort: 18080
+  #     memoryMB: 3072        # omit for automatic sizing
+  #   - dir: /volume2/@seaweedfs
 
 mtls:
   # Name of a Kubernetes Secret in `kube.namespace` containing
   # tls.crt / tls.key / ca.crt. Read at every start. Empty string
   # disables mTLS.
   secretName: ""
+
+# Optional: run weed from an OCI image instead of the bundled binary
+# (see the README's "Running weed from an OCI image").
+weed:
+  image: ""
+  digest: ""
+  plainHTTP: false
+  binaries: []          # default: [/usr/bin/weed]
+  cacheDir: /var/packages/seaweedfs/var/oci
 ```
+
+To rewrite `volume.servers` without an editor, use the bootstrap:
+`synology-volume-bootstrap --config <volume.yaml> --set-servers "/volume1/@seaweedfs=3072,/volume2/@seaweedfs=auto"`,
+then run `register-service.sh`.
 
 ## Updating the bearer token
 
@@ -92,4 +125,4 @@ This is what `weed volume` would be exec'd with on the next start. Compare again
 sudo synopkg uninstall seaweedfs
 ```
 
-Data under `/volume1/<sharename>/` is preserved. Tokens and certs under `/var/packages/seaweedfs/var/kube/` are wiped along with the package; back them up first if you want to reinstall without re-minting.
+Server directories and their data are kept. So are `volume.yaml` and the token and CA under `/var/packages/seaweedfs/var/kube/` (the package state lives in `/volumeN/@appdata/seaweedfs`), so a reinstall picks them up again; delete them by hand for a clean slate.

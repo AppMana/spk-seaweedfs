@@ -18,12 +18,13 @@ SPK=$(make show-spk | head -1)
 scp "$SPK" admin@nas:/tmp/seaweedfs.spk
 ```
 
-Or download directly on the NAS from a release artifact:
+Or download a published `.spk` from the
+[releases page](https://github.com/AppMana/spk-seaweedfs/releases) on the NAS:
 
 ```bash
 ssh admin@nas \
   curl -fL -o /tmp/seaweedfs.spk \
-  https://github.com/AppMana/spk-seaweedfs/releases/download/v4.40-4/seaweedfs_x64-7.2_4.40-4.spk
+  https://github.com/AppMana/spk-seaweedfs/releases/download/v<version>/seaweedfs_x64-7.2_<version>.spk
 ```
 
 ## 2. Install
@@ -78,9 +79,10 @@ sudo chmod 0600 $PKGVAR/volume.yaml
 
 Note: `volume.dir` is the **on-disk path** to the data directory. Keep it an `@` directory at a volume's top level (`/volumeN/@seaweedfs`): DSM never registers `@` directories as shared folders, whereas it can restore a plain top-level directory as a share at mount and rename it on a name collision. `register-service.sh` creates a missing directory for the package user.
 
-## 4. Start
+## 4. Register and start
 
 ```bash
+sudo sh /var/packages/seaweedfs/target/bin/register-service.sh
 sudo synopkg start seaweedfs
 sudo synopkg status seaweedfs
 sudo tail -f /var/packages/seaweedfs/var/log/weed.log
@@ -102,5 +104,5 @@ Look for a node entry where `DataCenter:synology Rack:nas-1` and `PublicUrl:192.
 
 - **"Forbidden: cannot get resource seaweeds"**: RBAC didn't apply or the token's namespace differs. Re-run `kubectl -n seaweedfs create token synology-volume-server`.
 - **"x509: certificate signed by unknown authority"**: drop the apiserver CA at `kube/ca.crt`, or temporarily set `kube.insecureSkipTLSVerify: true` in `volume.yaml` while debugging.
-- **`weed volume` registers but masters can't dial back**: `volume.ip` / `publicUrl` advertised an IP the cluster cannot route. Calico BGP must consider the Synology's LAN IP reachable; verify with `kubectl run -it --rm netcheck --image=busybox -- sh` and `wget http://<synology>:8080/status` from inside.
+- **`weed volume` registers but masters can't dial back**: `volume.ip` / `publicUrl` advertised an IP the cluster cannot route. Pods must be able to reach the Synology's LAN IP; verify with `kubectl run -it --rm netcheck --image=busybox -- sh` and `wget http://<synology>:8080/status` from inside.
 - **Volume daemon dies immediately**: read `bootstrap` errors at the top of `weed.log`; usually a `volume.yaml` field validation failure.
